@@ -1,6 +1,7 @@
 # PRT - Portable Radio Transmitter (for FIKA only)
 **v0.9.6**
 **Made by Suomi & makshepard**
+**Developed with the help of AI**
 
 Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Realistic TRC-83 to Harris AN/PRC-152 and the R-187P1), purchasable from traders, with a full custom voice channel: range-based signal degradation, static, and a unique "voice" per radio.
 
@@ -20,13 +21,12 @@ Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Rea
 
 All keybinds, volumes, indicators, and colors can be changed in the F12 menu.
 
-
-
 ---
 
 # PRT - Portable Radio Transmitter (только для FIKA)
 **v0.9.6**
 **Made by Suomi & makshepard**
+**Разработано с помощью ИИ**
 
 Реалистичная портативная радиосвязь для EFT + FIKA co-op. 13 раций (от Realistic TRC-83 до Harris AN/PRC-152 и Р-187П1), покупка у торговцев, полноценный собственный голосовой канал: деградация сигнала по дальности, помехи, у каждой рации свой уникальный "голос".
 
@@ -45,4 +45,3 @@ All keybinds, volumes, indicators, and colors can be changed in the F12 menu.
 - **Enter** — переключить Полудуплекс/Симплекс (не на всех рациях, только когда рация включена)
 
 Все хоткеи, громкость, индикаторы и цвета можно поменять в меню F12.
-
