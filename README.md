@@ -20,8 +20,7 @@ Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Rea
 
 All keybinds, volumes, indicators, and colors can be changed in the F12 menu.
 
-## Installation
-Copy the `BepInEx` and `SPT` folders into your game's root directory (where `EscapeFromTarkov.exe` is), merging contents. No extra steps needed.
+
 
 ---
 
@@ -47,5 +46,3 @@ Copy the `BepInEx` and `SPT` folders into your game's root directory (where `Esc
 
 Все хоткеи, громкость, индикаторы и цвета можно поменять в меню F12.
 
-## Установка
-Скопируй папки `BepInEx` и `SPT` в корень игры (туда же, где `EscapeFromTarkov.exe`), с объединением содержимого. Никаких дополнительных шагов не требуется.
