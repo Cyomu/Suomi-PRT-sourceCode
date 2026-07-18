@@ -1,0 +1,60 @@
+{
+    "manifest": [
+        {
+            "key": "prt-fika/baofeng",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/shaders",
+            "dependencyKeys": []
+        },
+        {
+            "key": "prt-fika/azart",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/kenwood",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/t460",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/yaesu",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/dp4800",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/dp4601e",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/xts5000",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/harris",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/trc83",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/alinco",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/kenwoodprotalk",
+            "dependencyKeys": ["prt-fika/shaders"]
+        },
+        {
+            "key": "prt-fika/mth800",
+            "dependencyKeys": ["prt-fika/shaders"]
+        }
+    ]
+}

@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>RadioMod.Client</AssemblyName>
+    <Version>0.9.6</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Звуки зашиты прямо в сборку — отправлять другу только одну dll, без папки Sounds -->
+    <EmbeddedResource Include="Sounds\**\*.wav" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- BepInEx core -->
+    <Reference Include="BepInEx">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\BepInEx\core\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Игра: Managed DLL -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="DissonanceVoip">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\DissonanceVoip.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Fika.Core">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\BepInEx\plugins\Fika\Fika.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Comfort">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\Comfort.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.UnityWebRequestModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
