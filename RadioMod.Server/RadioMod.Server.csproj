@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>RadioMod.Server</AssemblyName>
-    <Version>0.9.6</Version>
+    <Version>0.9.7</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
