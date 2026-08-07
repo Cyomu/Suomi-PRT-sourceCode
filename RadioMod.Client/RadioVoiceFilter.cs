@@ -56,6 +56,7 @@ namespace RadioMod.Client
         private volatile int _mode = (int)Mode.Passthrough;
         private volatile float _ratio;
         private volatile float _noiseScale = 1f;
+        private volatile float _outputGain = 1f;
         private Profile _profile = Profile.Default;
         private readonly object _profileLock = new object();
 
@@ -89,11 +90,12 @@ namespace RadioMod.Client
             }
         }
 
-        public void SetState(Mode mode, float ratio, float noiseScale, Profile profile, bool combatAmbience = false, float hiddenNoiseAmp = 0f)
+        public void SetState(Mode mode, float ratio, float noiseScale, Profile profile, bool combatAmbience = false, float hiddenNoiseAmp = 0f, float outputGain = 1f)
         {
             _mode = (int)mode;
             _ratio = Mathf.Clamp01(ratio);
-            _noiseScale = Mathf.Clamp01(noiseScale);
+            _noiseScale = Mathf.Clamp(noiseScale, 0f, 3f);
+            _outputGain = Mathf.Clamp(outputGain, 0f, 3f);
             _combatAmbience = combatAmbience;
             _hiddenNoiseAmp = Mathf.Max(0f, hiddenNoiseAmp);
             lock (_profileLock)
@@ -242,6 +244,8 @@ namespace RadioMod.Client
                         _hiddenNoiseLp[ch] += hiddenNoiseLpCoef * (hiddenWhite - _hiddenNoiseLp[ch]);
                         v += _hiddenNoiseLp[ch] * hiddenNoiseAmp;
                     }
+
+                    v *= _outputGain;
 
                     data[idx] = Mathf.Clamp(v, -1f, 1f);
                 }

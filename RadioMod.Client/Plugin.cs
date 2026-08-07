@@ -674,19 +674,19 @@ namespace RadioMod.Client
                 "2. Volume",
                 "Receive Volume",
                 1f,
-                Desc("Volume of the other person's voice as heard over the radio", new AcceptableValueRange<float>(0.05f, 1f), 30));
+                Desc("Volume of the other person's voice as heard over the radio (supports boost above 1.0)", new AcceptableValueRange<float>(0.05f, 3f), 30));
 
             _noiseVolume = Config.Bind(
                 "2. Volume",
                 "Noise Volume",
                 1f,
-                Desc("Radio static/noise volume (minimum 5%, default 1)", new AcceptableValueRange<float>(0.05f, 1f), 20));
+                Desc("Radio static/noise volume (minimum 5%, supports boost above 1.0)", new AcceptableValueRange<float>(0.05f, 3f), 20));
 
             _soundVolume = Config.Bind(
                 "2. Volume",
                 "Sound Volume",
                 1f,
-                Desc("Volume of radio sound effects (on/off clicks, start/end of transmission)", new AcceptableValueRange<float>(0.05f, 1f), 10));
+                Desc("Volume of radio sound effects (on/off clicks, start/end of transmission, supports boost above 1.0)", new AcceptableValueRange<float>(0.05f, 3f), 10));
 
             _showNotifications = Config.Bind(
                 "3. Radio",
@@ -923,7 +923,7 @@ namespace RadioMod.Client
             return true;
         }
 
-        private AudioClip BuildClip(WavData wav, string name)
+        private AudioClip BuildClip(WavData wav, string name, float gain = 1f)
         {
             if (wav.Samples == null)
             {
@@ -931,7 +931,19 @@ namespace RadioMod.Client
             }
 
             AudioClip clip = AudioClip.Create(name, wav.Samples.Length / wav.Channels, wav.Channels, wav.SampleRate, false);
-            clip.SetData(wav.Samples, 0);
+            if (gain <= 1f)
+            {
+                clip.SetData(wav.Samples, 0);
+                return clip;
+            }
+
+            float[] boosted = new float[wav.Samples.Length];
+            for (int i = 0; i < wav.Samples.Length; i++)
+            {
+                boosted[i] = Mathf.Clamp(wav.Samples[i] * gain, -1f, 1f);
+            }
+
+            clip.SetData(boosted, 0);
             return clip;
         }
 
@@ -952,7 +964,8 @@ namespace RadioMod.Client
 
         private void PlayClip(WavData wav, string name)
         {
-            AudioClip clip = BuildClip(wav, name);
+            float gain = Mathf.Clamp(_soundVolume.Value, 0.05f, 3f);
+            AudioClip clip = BuildClip(wav, name, gain);
             if (clip == null)
             {
                 Logger.LogWarning("PRT: attempted to play an unloaded sound: " + name);
@@ -960,10 +973,10 @@ namespace RadioMod.Client
             }
 
             AudioSource source = EnsureAudioSource(ref _audioSource, "RadioMod_ClickAudio");
-            source.volume = _soundVolume.Value;
+            source.volume = Mathf.Min(1f, gain);
             source.clip = clip;
             source.Play();
-            Logger.LogInfo("PRT: playing sound " + name + ", volume=" + _soundVolume.Value
+            Logger.LogInfo("PRT: playing sound " + name + ", gain=" + gain
                 + " | isPlaying=" + source.isPlaying);
         }
 
@@ -1942,7 +1955,7 @@ namespace RadioMod.Client
                 else if (_radioFilters.TryGetValue(player.Name, out RadioVoiceFilter idle))
                 {
 
-                    idle.SetState(RadioVoiceFilter.Mode.Passthrough, 0f, _noiseVolume.Value, RadioVoiceFilter.Profile.Default);
+                    idle.SetState(RadioVoiceFilter.Mode.Passthrough, 0f, _noiseVolume.Value, RadioVoiceFilter.Profile.Default, outputGain: _receiveVolume.Value);
                 }
             }
 
@@ -2010,7 +2023,7 @@ namespace RadioMod.Client
             }
 
             src.spatialBlend = 0f;
-            src.volume = _receiveVolume.Value;
+            src.volume = Mathf.Min(1f, _receiveVolume.Value);
             src.mute = false;
             src.bypassListenerEffects = true;
             src.bypassReverbZones = true;
@@ -2055,7 +2068,7 @@ namespace RadioMod.Client
                 ? profile.HiddenNoiseAmp
                 : 0f;
 
-            filter.SetState(mode, ratio, _noiseVolume.Value, ToFilterProfile(profile), combatAmbience, hiddenNoiseAmp);
+            filter.SetState(mode, ratio, _noiseVolume.Value, ToFilterProfile(profile), combatAmbience, hiddenNoiseAmp, _receiveVolume.Value);
 
             _lastRatio[player.Name] = mode == RadioVoiceFilter.Mode.Static ? 1f : ratio;
 
@@ -2078,7 +2091,7 @@ namespace RadioMod.Client
                     continue;
                 }
 
-                filter.SetState(RadioVoiceFilter.Mode.Passthrough, 0f, _noiseVolume.Value, RadioVoiceFilter.Profile.Default);
+                filter.SetState(RadioVoiceFilter.Mode.Passthrough, 0f, _noiseVolume.Value, RadioVoiceFilter.Profile.Default, outputGain: _receiveVolume.Value);
 
                 AudioSource src = filter.GetComponent<AudioSource>();
                 if (src != null)
