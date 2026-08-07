@@ -1478,6 +1478,7 @@ namespace RadioMod.Server
             });
 
             AddRadiosToTraders();
+            PatchSpecialSlotsForRadios();
             int patchedContainers = ExcludeFromSecuredContainers();
             EnableTraderBuyback();
             AddRadiosToWorldLoot();
@@ -1535,6 +1536,52 @@ namespace RadioMod.Server
                         foreach (MongoId id in idsForThisSlot)
                         {
                             filter.Filter.Add(id);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void PatchSpecialSlotsForRadios()
+        {
+            var items = _databaseService.GetTables().Templates.Items;
+            var radioIds = new HashSet<MongoId>
+            {
+                new MongoId(BaofengTplId),
+                new MongoId(AzartTplId),
+                new MongoId(KenwoodTplId),
+                new MongoId(T460TplId),
+                new MongoId(YaesuTplId),
+                new MongoId(Dp4800TplId),
+                new MongoId(Dp4601eTplId),
+                new MongoId(Xts5000TplId),
+                new MongoId(HarrisTplId),
+                new MongoId(Trc83TplId),
+                new MongoId(AlincoTplId),
+                new MongoId(KenwoodProTalkTplId),
+                new MongoId(Mth800TplId)
+            };
+
+            foreach (TemplateItem item in items.Values)
+            {
+                if (item.Properties?.Slots == null)
+                {
+                    continue;
+                }
+
+                foreach (Slot slot in item.Properties.Slots)
+                {
+                    if (slot.Name == null || !slot.Name.StartsWith("SpecialSlot") || slot.Properties?.Filters == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (SlotFilter filter in slot.Properties.Filters)
+                    {
+                        filter.Filter ??= new HashSet<MongoId>();
+                        foreach (MongoId radioId in radioIds)
+                        {
+                            filter.Filter.Add(radioId);
                         }
                     }
                 }
