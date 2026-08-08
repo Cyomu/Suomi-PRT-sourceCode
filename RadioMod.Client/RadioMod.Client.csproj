@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>RadioMod.Client</AssemblyName>
-    <Version>0.9.7</Version>
+    <Version>0.9.8</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -32,6 +32,11 @@
     </Reference>
     <Reference Include="DissonanceVoip">
       <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\DissonanceVoip.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Нужна для IItemComponent: чтение заряда батарей через ResourceComponent -->
+    <Reference Include="ItemComponent.Types">
+      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\EscapeFromTarkov_Data\Managed\ItemComponent.Types.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Fika.Core">

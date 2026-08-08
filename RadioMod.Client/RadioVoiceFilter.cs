@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace RadioMod.Client
@@ -56,6 +57,7 @@ namespace RadioMod.Client
         private volatile int _mode = (int)Mode.Passthrough;
         private volatile float _ratio;
         private volatile float _noiseScale = 1f;
+        private volatile float _receiveVolume = 1f;
         private Profile _profile = Profile.Default;
         private readonly object _profileLock = new object();
 
@@ -80,6 +82,36 @@ namespace RadioMod.Client
         private volatile float _hiddenNoiseAmp;
         private float[] _hiddenNoiseLp;
 
+        private volatile bool _recording;
+        private readonly object _recordLock = new object();
+        private List<float> _recordBuffer = new List<float>();
+        private int _recordChannels;
+
+        public bool Recording
+        {
+            set { _recording = value; }
+        }
+
+        public void FlushRecording(out float[] samples, out int recordedChannels)
+        {
+            lock (_recordLock)
+            {
+                samples = _recordBuffer.ToArray();
+                recordedChannels = _recordChannels;
+                _recordBuffer.Clear();
+            }
+        }
+
+        public void GetLastState(out Mode mode, out float ratio, out Profile profile)
+        {
+            mode = (Mode)_mode;
+            ratio = _ratio;
+            lock (_profileLock)
+            {
+                profile = _profile;
+            }
+        }
+
         private void Awake()
         {
             _sampleRate = AudioSettings.outputSampleRate;
@@ -89,24 +121,133 @@ namespace RadioMod.Client
             }
         }
 
-        public void SetState(Mode mode, float ratio, float noiseScale, Profile profile, bool combatAmbience = false, float hiddenNoiseAmp = 0f)
+        public void SetState(Mode mode, float ratio, float noiseScale, Profile profile, bool combatAmbience = false, float hiddenNoiseAmp = 0f, float receiveVolume = 1f)
         {
             _mode = (int)mode;
             _ratio = Mathf.Clamp01(ratio);
             _noiseScale = Mathf.Clamp01(noiseScale);
             _combatAmbience = combatAmbience;
             _hiddenNoiseAmp = Mathf.Max(0f, hiddenNoiseAmp);
+            _receiveVolume = Mathf.Clamp(receiveVolume, 0.01f, 10f);
             lock (_profileLock)
             {
                 _profile = profile;
             }
         }
 
+        public static void ApplyOffline(float[] data, int channels, int sampleRate, Profile profile, Mode mode, float ratio, float noiseScale)
+        {
+            if (mode == Mode.Passthrough)
+            {
+                return;
+            }
+
+            if (mode == Mode.Silent)
+            {
+                Array.Clear(data, 0, data.Length);
+                return;
+            }
+
+            var rnd = new System.Random();
+            float[] lpState = new float[channels];
+            float[] hpPrevIn = new float[channels];
+            float[] hpPrevOut = new float[channels];
+            float[] noiseLp = new float[channels];
+            double phase = 0.0;
+            bool inDropout = false;
+            int dropoutSamplesRemaining = 0;
+            int dropoutRerollCountdown = 0;
+
+            bool staticMode = mode == Mode.Static;
+            float r = Mathf.Clamp01(ratio);
+            noiseScale = Mathf.Clamp01(noiseScale);
+
+            float lpCutoff = staticMode ? profile.StaticLpCutoff : Mathf.Lerp(profile.LpCutoffNear, profile.LpCutoffFar, r);
+            float lpCoef = 1f - Mathf.Exp(-2f * Mathf.PI * lpCutoff / sampleRate);
+            float hpCoef = Mathf.Exp(-2f * Mathf.PI * profile.HpCutoffHz / sampleRate);
+            float drive = staticMode ? profile.StaticDrive : Mathf.Lerp(profile.DriveNear, profile.DriveFar, r);
+            float carrierHz = Mathf.Lerp(profile.CarrierHzNear, profile.CarrierHzFar, r);
+            float ringMix = staticMode ? profile.StaticRingMix : Mathf.Lerp(profile.RingMixNear, profile.RingMixFar, r);
+            float noiseAmp = (staticMode ? profile.StaticNoiseAmp : Mathf.Lerp(profile.NoiseAmpNear, profile.NoiseAmpFar, r)) * noiseScale;
+            float noiseLpCoef = 1f - Mathf.Exp(-2f * Mathf.PI * profile.NoiseLpCutoffHz / sampleRate);
+            float voiceGain = staticMode ? profile.StaticVoiceGain : Mathf.Lerp(profile.VoiceGainNear, profile.VoiceGainFar, r);
+            float dropoutChance = staticMode ? profile.StaticDropoutChance : Mathf.Lerp(profile.DropoutChanceNear, profile.DropoutChanceFar, r);
+            int rerollWindowSamples = Mathf.Max(1, Mathf.RoundToInt(sampleRate * 0.03f));
+
+            int frames = data.Length / channels;
+            for (int i = 0; i < frames; i++)
+            {
+                float carrier = Mathf.Sin((float)(2.0 * Math.PI * carrierHz * (phase / sampleRate)));
+
+                if (dropoutSamplesRemaining > 0)
+                {
+                    dropoutSamplesRemaining--;
+                }
+                else
+                {
+                    inDropout = false;
+                }
+
+                if (--dropoutRerollCountdown <= 0)
+                {
+                    dropoutRerollCountdown = rerollWindowSamples;
+                    if (!inDropout && dropoutChance > 0f && rnd.NextDouble() < dropoutChance)
+                    {
+                        inDropout = true;
+                        dropoutSamplesRemaining = Mathf.RoundToInt(sampleRate * (float)(0.02 + rnd.NextDouble() * 0.13));
+                    }
+                }
+
+                float dropoutGain = inDropout ? 0.08f : 1f;
+
+                for (int ch = 0; ch < channels; ch++)
+                {
+                    int idx = i * channels + ch;
+                    float x = data[idx];
+
+                    lpState[ch] += lpCoef * (x - lpState[ch]);
+                    float lp = lpState[ch];
+
+                    float hp = hpCoef * (hpPrevOut[ch] + lp - hpPrevIn[ch]);
+                    hpPrevIn[ch] = lp;
+                    hpPrevOut[ch] = hp;
+
+                    float v = Mathf.Lerp(hp, hp * carrier, ringMix);
+                    v = (float)Math.Tanh(v * drive) * voiceGain * dropoutGain;
+
+                    float white2 = (float)(rnd.NextDouble() * 2.0 - 1.0);
+                    noiseLp[ch] += noiseLpCoef * (white2 - noiseLp[ch]);
+                    v += noiseLp[ch] * noiseAmp;
+
+                    data[idx] = Mathf.Clamp(v, -1f, 1f);
+                }
+
+                phase += 1.0;
+                if (phase >= sampleRate)
+                {
+                    phase -= sampleRate;
+                }
+            }
+        }
+
         private void OnAudioFilterRead(float[] data, int channels)
         {
             int mode = _mode;
+            float receiveVolume = _receiveVolume;
+
             if (mode == (int)Mode.Passthrough)
             {
+                // Setting AudioSource.volume doesn't reliably stick — Dissonance's own playback
+                // component re-touches it too, on an execution order we don't control. Applying the
+                // multiplier directly to the samples here is immune to that.
+                if (Math.Abs(receiveVolume - 1f) > 0.001f)
+                {
+                    for (int i = 0; i < data.Length; i++)
+                    {
+                        data[i] = Mathf.Clamp(data[i] * receiveVolume, -1f, 1f);
+                    }
+                }
+
                 return;
             }
 
@@ -214,6 +355,18 @@ namespace RadioMod.Client
                     combatBurstSample = _combatBurstLp * 0.4f;
                 }
 
+                if (_recording)
+                {
+                    lock (_recordLock)
+                    {
+                        _recordChannels = channels;
+                        for (int ch = 0; ch < channels; ch++)
+                        {
+                            _recordBuffer.Add(data[i * channels + ch]);
+                        }
+                    }
+                }
+
                 for (int ch = 0; ch < channels; ch++)
                 {
                     int idx = i * channels + ch;
@@ -243,7 +396,7 @@ namespace RadioMod.Client
                         v += _hiddenNoiseLp[ch] * hiddenNoiseAmp;
                     }
 
-                    data[idx] = Mathf.Clamp(v, -1f, 1f);
+                    data[idx] = Mathf.Clamp(v * receiveVolume, -1f, 1f);
                 }
 
                 _phase += 1.0;
@@ -252,6 +405,29 @@ namespace RadioMod.Client
                     _phase -= _sampleRate;
                 }
             }
+
+            MeasureOutputLevel(data);
+        }
+
+        /// <summary>
+        /// Peak level of the last processed buffer, 0..1. Written from the audio thread and read
+        /// from the UI thread; a single float assignment is atomic so no lock is needed.
+        /// </summary>
+        public float OutputLevel { get; private set; }
+
+        private void MeasureOutputLevel(float[] data)
+        {
+            float peak = 0f;
+            for (int i = 0; i < data.Length; i++)
+            {
+                float a = data[i] < 0f ? -data[i] : data[i];
+                if (a > peak)
+                {
+                    peak = a;
+                }
+            }
+
+            OutputLevel = peak;
         }
     }
 }
