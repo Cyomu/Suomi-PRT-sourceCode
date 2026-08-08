@@ -1,5 +1,5 @@
-# PRT - Portable Radio Transmitter (for FIKA only)
-**v0.9.7**
+# S&M-PRT - Portable Radio Transmitter (for FIKA only)
+**v1.0.0**  ·  built for SPT 4.0.13
 - **Made by _Suomi & makshepard**
 - **Developed with the help of AI**
 
@@ -14,14 +14,19 @@ Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Rea
 * On‑screen status indicators in raid (radio on/off, transmit state, channel busy, duplex mode, signal strength) with customisation options;
 * A dedicated notification overlay with simple configuration options;
 * Item names, descriptions, and on-screen notifications localized into 8 languages (Russian, English, German, Spanish, French, Polish, Italian, Czech), auto-detected from your game's language;
+* Radios can be carried in the special slots, alongside the compass, multitool and paracord;
+* **Raid Recordings (F9)** — optionally record radio traffic during a raid and play it back afterwards in a built-in browser, with waveform/spectrogram view, per-clip filtering and auto-cleanup. Off by default, enable it in F12;
+* **Optional battery support** — with [Batteries Not Included](https://forge.sp-tarkov.com/mod/2437/batteries-not-included) installed, every radio takes real AA/CR123A batteries (1 or 2 depending on the model, with per-radio runtimes), shows its charge on the inventory icon and on screen, warns on low power and shuts down when flat. Without that mod nothing changes — radios are simply always powered;
 * If Project Fika is not installed, radios automatically fall back to being collectible-only items (no radio functionality) and can be displayed in the Hall of Fame instead;
-* All colors and indicator styles configurable in the BepInEx Configuration Manager (F12).
+* All colors, indicator styles and on-screen scaling configurable in the BepInEx Configuration Manager (F12).
 
 ---
 
 ## Requirements
 
 [Project Fika](https://forge.sp-tarkov.com/mod/2326/project-fika)
+
+**Optional:** [Batteries Not Included](https://forge.sp-tarkov.com/mod/2437/batteries-not-included) — adds battery slots to the radios. Not required; without it the radios simply never run out of power.
 
 ---
 
@@ -59,7 +64,7 @@ The radio uses key combinations, and each of them includes the VOIP key. By defa
 
 ![AllowVOIP_inSettingsFIKA](https://i.imgur.com/K5lRuJF.png)
 
-The mod settings are located in‑game in the F12 menu under Suomi-PRT *.*.* (see image below):
+The mod settings are located in‑game in the F12 menu under S&M-PRT *.*.* (see image below):
 
 ![SettingsPRT](https://i.imgur.com/n4a0WBA.png)
 
@@ -68,9 +73,7 @@ The mod settings are located in‑game in the F12 menu under Suomi-PRT *.*.* (se
 ## Known Issues
 
 * **When broadcasting inside buildings, sound quality degrades significantly due to the audio engine's behaviour** (currently unfixable);
-* While in raid, if you open the menu with the ESC key, the radio indicators remain visible (currently unfixable);
 * When switching a radio from an invalid slot to a valid one (*e.g. from backpack to rig*), it does not get selected automatically (we are working on this);
-
 
 > If you encounter any errors, please write in the comments or on Discord with a description of the issue and attach the logs: `\BepInEx\plugins\prt-fika\prt-fika.log`
 
@@ -81,6 +84,12 @@ The mod settings are located in‑game in the F12 menu under Suomi-PRT *.*.* (se
 - _Suomi_ handled the engine‑side work: sourcing and adapting 3D radio models, bundling them into Unity AssetBundles, reverse‑engineering EFT's internal classes/APIs with dnSpy, finding and organising sound assets, extensive in‑game testing across multiple sessions, and designing the on‑screen status indicator system (layout, behaviour, style);
 - _makshepard_ provided guides, reference material, design feedback, and testing throughout development;
 - **Developed with the help of AI**.
+
+## License
+
+Copyright (c) 2026 Suomi & makshepard
+
+Released under the **MIT License** — see the `LICENSE` file for the full text.
 
 ## AI Disclosure
 
