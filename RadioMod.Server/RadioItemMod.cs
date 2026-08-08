@@ -20,12 +20,20 @@ namespace RadioMod.Server
     [Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 1)]
     public class RadioItemMod : IOnLoad
     {
-        internal const string DisplayVersion = "0.9.7";
+        internal const string DisplayVersion = "1.0.0";
 
         private const string CompassTplId = "5f4f9eb969cdc30ff33f09db";
 
         private const string ValuableCloneBaseTplId = "573474f924597738002c6174";
         private const string MultitoolsCategoryId = "66abb0743f4d8b145b1612c1";
+
+        /// <summary>
+        /// Only items descending from CompoundItem can carry slots, and Multitools/SpecItem does
+        /// not. When a battery mod is present the radios are re-parented into the FunctionalMod
+        /// branch — the same branch sights and flashlights live in, which is exactly what those
+        /// mods are built to add battery slots to. Without such a mod nothing changes.
+        /// </summary>
+        private const string FunctionalModCategoryId = "550aa4154bdc2dd8348b456b";
 
         private const string BarterValuablesCategoryId = "57864a3d24597754843f8721";
 
@@ -91,7 +99,12 @@ namespace RadioMod.Server
         {
 
             bool fikaInstalled = IsFikaServerInstalled();
-            string radioParentId = fikaInstalled ? MultitoolsCategoryId : BarterValuablesCategoryId;
+            bool batteriesInstalled = IsBatteriesModInstalled();
+
+            // Battery slots require a CompoundItem-derived class; see FunctionalModCategoryId.
+            string radioParentId = fikaInstalled
+                ? (batteriesInstalled ? FunctionalModCategoryId : MultitoolsCategoryId)
+                : BarterValuablesCategoryId;
             string radioCloneBase = fikaInstalled ? CompassTplId : ValuableCloneBaseTplId;
             string radioHandbookParentId = fikaInstalled ? SpecialEquipmentHandbookParentId : BarterHandbookParentId;
 
@@ -99,7 +112,7 @@ namespace RadioMod.Server
 
             string radioRarityPvE = "Superrare";
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -206,7 +219,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -313,7 +326,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -420,7 +433,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -525,7 +538,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -630,7 +643,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -736,7 +749,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -843,7 +856,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -949,7 +962,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -1055,7 +1068,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -1162,7 +1175,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -1267,7 +1280,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -1372,7 +1385,7 @@ namespace RadioMod.Server
                 }
             });
 
-            _customItemService.CreateItemFromClone(new NewItemFromCloneDetails
+            CreateRadio(new NewItemFromCloneDetails
             {
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
@@ -1481,10 +1494,16 @@ namespace RadioMod.Server
             int patchedContainers = ExcludeFromSecuredContainers();
             EnableTraderBuyback();
             AddRadiosToWorldLoot();
+            AllowRadiosInSpecialSlots();
 
             if (!fikaInstalled)
             {
                 PatchHallOfFame();
+            }
+
+            if (batteriesInstalled)
+            {
+                AddBatterySlotsToRadios();
             }
 
             LogStartupBanner(patchedContainers, fikaInstalled);
@@ -1492,10 +1511,177 @@ namespace RadioMod.Server
             return Task.CompletedTask;
         }
 
+        private readonly struct BatterySpec
+        {
+            public readonly string Type;
+            public readonly int Count;
+            public readonly double RuntimeHours;
+
+            public BatterySpec(string type, int count, double runtimeHours)
+            {
+                Type = type;
+                Count = count;
+                RuntimeHours = runtimeHours;
+            }
+        }
+
+        /// <summary>
+        /// Must stay in step with the entries registered in the battery mod's customDevices config —
+        /// this table only drives the item description text, not the actual drain.
+        /// </summary>
+        private static readonly Dictionary<string, BatterySpec> RadioBatterySpecs = new Dictionary<string, BatterySpec>
+        {
+            [KenwoodTplId] = new BatterySpec("AA", 1, 8),
+            [Trc83TplId] = new BatterySpec("AA", 1, 8),
+            [BaofengTplId] = new BatterySpec("AA", 2, 7),
+            [AlincoTplId] = new BatterySpec("AA", 2, 7),
+            [T460TplId] = new BatterySpec("AA", 1, 6),
+            [KenwoodProTalkTplId] = new BatterySpec("AA", 2, 6),
+            [YaesuTplId] = new BatterySpec("CR123A", 1, 5),
+            [Mth800TplId] = new BatterySpec("CR123A", 1, 5),
+            [Dp4800TplId] = new BatterySpec("CR123A", 2, 4),
+            [Dp4601eTplId] = new BatterySpec("CR123A", 2, 4),
+            [Xts5000TplId] = new BatterySpec("CR123A", 2, 3),
+            [AzartTplId] = new BatterySpec("CR123A", 2, 3),
+            [HarrisTplId] = new BatterySpec("CR123A", 2, 2.5),
+        };
+
+        private const string AaBatteryTplId = "5672cb124bdc2d1a0f8b4568";
+        private const string Cr123ABatteryTplId = "590a358486f77429692b2790";
+
+        /// <summary>
+        /// Vanilla slot prototype. Without a proto the client has no visual template for the slot
+        /// and draws a blank white square instead of the usual bordered socket.
+        /// </summary>
+        private const string SlotProtoId = "55d30c4c4bdc2db4468b457e";
+
+        /// <summary>
+        /// Adds the battery slots to the radio templates directly instead of relying on the battery
+        /// mod to do it. That mod processes item templates before our radios exist, so it never sees
+        /// them — doing it here is the only way the slots actually appear.
+        /// </summary>
+        private void AddBatterySlotsToRadios()
+        {
+            var items = _databaseService.GetTables().Templates.Items;
+            int patched = 0;
+
+            foreach (KeyValuePair<string, BatterySpec> entry in RadioBatterySpecs)
+            {
+                if (!items.TryGetValue(entry.Key, out TemplateItem? template) || template?.Properties == null)
+                {
+                    continue;
+                }
+
+                string batteryTpl = entry.Value.Type == "CR123A" ? Cr123ABatteryTplId : AaBatteryTplId;
+                var slots = new List<Slot>();
+
+                for (int i = 0; i < entry.Value.Count; i++)
+                {
+                    slots.Add(new Slot
+                    {
+                        Id = new MongoId(),
+                        // The client only renders a proper socket for slot names it knows; a custom
+                        // name draws as a blank white square. "mod_equipment_00N" is the name the
+                        // battery mod itself uses, so it inherits the same visuals and caption.
+                        Name = "mod_equipment_00" + i,
+                        Parent = new MongoId(entry.Key),
+                        Required = false,
+                        MergeSlotWithChildren = false,
+                        Prototype = new MongoId(SlotProtoId),
+                        Properties = new SlotProperties
+                        {
+                            Filters = new List<SlotFilter>
+                            {
+                                new SlotFilter { Filter = new HashSet<MongoId> { new MongoId(batteryTpl) }, Shift = 0 }
+                            }
+                        }
+                    });
+                }
+
+                template.Properties.Slots = slots;
+
+                // Batteries must be swappable mid-raid, so the radio has to be raid-moddable and
+                // must not be locked into its slots once a raid starts.
+                template.Properties.RaidModdable = true;
+                template.Properties.CanPutIntoDuringTheRaid = true;
+
+                patched++;
+            }
+
+            _logger.LogWithColor("[S&M-PRT] Battery slots added to " + patched + " radios", LogTextColor.Gray);
+        }
+
+        private static string FormatRuntime(double hours)
+        {
+            int totalMinutes = (int)System.Math.Round(hours * 60.0);
+            return (totalMinutes / 60) + "h " + (totalMinutes % 60).ToString("00") + "m";
+        }
+
+        /// <summary>
+        /// Prepends the battery requirement and runtime to every localised description, mirroring
+        /// how the battery mod annotates the devices it knows about. Only runs when that mod is
+        /// present, so a plain install shows the original text untouched.
+        /// </summary>
+        private static void AppendBatteryInfo(Dictionary<string, LocaleDetails>? locales, BatterySpec spec)
+        {
+            if (locales == null)
+            {
+                return;
+            }
+
+            string runtime = FormatRuntime(spec.RuntimeHours);
+
+            foreach (KeyValuePair<string, LocaleDetails> entry in locales)
+            {
+                string line = entry.Key switch
+                {
+                    "ru" => "Требует " + spec.Count + "x Батарейка типа " + spec.Type + "\n"
+                        + "Имеет время работы в " + runtime,
+                    "ge" => "Benötigt " + spec.Count + "x Batterie vom Typ " + spec.Type + "\n"
+                        + "Laufzeit: " + runtime,
+                    "es" => "Requiere " + spec.Count + "x pila de tipo " + spec.Type + "\n"
+                        + "Tiempo de funcionamiento: " + runtime,
+                    "fr" => "Nécessite " + spec.Count + "x pile de type " + spec.Type + "\n"
+                        + "Autonomie : " + runtime,
+                    "pl" => "Wymaga " + spec.Count + "x bateria typu " + spec.Type + "\n"
+                        + "Czas pracy: " + runtime,
+                    "it" => "Richiede " + spec.Count + "x batteria di tipo " + spec.Type + "\n"
+                        + "Autonomia: " + runtime,
+                    "cz" => "Vyžaduje " + spec.Count + "x baterii typu " + spec.Type + "\n"
+                        + "Výdrž: " + runtime,
+                    _ => "Requires " + spec.Count + "x " + spec.Type + " Battery\n"
+                        + "Has a runtime of " + runtime,
+                };
+
+                entry.Value.Description = line + "\n\n" + entry.Value.Description;
+            }
+        }
+
+        /// <summary>
+        /// Single funnel for radio creation so the battery annotation is applied consistently
+        /// instead of being duplicated across every radio definition.
+        /// </summary>
+        private void CreateRadio(NewItemFromCloneDetails details)
+        {
+            // Battery info is surfaced as native attribute rows on the client (see
+            // TierAttributePatch) rather than as description text, so nothing is appended here.
+            _customItemService.CreateItemFromClone(details);
+        }
+
         private static bool IsFikaServerInstalled()
         {
             return System.AppDomain.CurrentDomain.GetAssemblies()
                 .Any(a => a.GetName().Name == "FikaServer");
+        }
+
+        /// <summary>
+        /// Detects Ozen's "Batteries Not Included". When present the radios are registered in that
+        /// mod's customDevices config and run on batteries; without it they need no power at all.
+        /// </summary>
+        private static bool IsBatteriesModInstalled()
+        {
+            return System.AppDomain.CurrentDomain.GetAssemblies()
+                .Any(a => a.GetName().Name == "ozen-BatteriesNotIncluded");
         }
 
         private void PatchHallOfFame()
@@ -1541,6 +1727,54 @@ namespace RadioMod.Server
             }
         }
 
+        /// <summary>Pocket templates that carry the three special slots (compass/multitool/paracord).</summary>
+        private static readonly string[] SpecialSlotPocketTplIds =
+        {
+            "627a4e6b255f7527fb05a0f6", // Pockets 1x4 with special slots
+            "65e080be269cbd5c5005e529", // Pockets 1x4 TUE
+        };
+
+        /// <summary>
+        /// Lets the radios be carried in the special slots alongside the compass, multitool and
+        /// paracord. Those slots don't filter by category — each one carries an explicit whitelist of
+        /// item ids — so every radio has to be added to each slot's list by hand.
+        /// </summary>
+        private void AllowRadiosInSpecialSlots()
+        {
+            var items = _databaseService.GetTables().Templates.Items;
+            var radioIds = new HashSet<MongoId>(RadioBatterySpecs.Keys.Select(id => new MongoId(id)));
+            int patchedSlots = 0;
+
+            foreach (string pocketTplId in SpecialSlotPocketTplIds)
+            {
+                if (!items.TryGetValue(new MongoId(pocketTplId), out TemplateItem? pockets) || pockets.Properties?.Slots == null)
+                {
+                    continue;
+                }
+
+                foreach (Slot slot in pockets.Properties.Slots)
+                {
+                    if (slot.Name == null || !slot.Name.StartsWith("SpecialSlot") || slot.Properties?.Filters == null)
+                    {
+                        continue;
+                    }
+
+                    foreach (SlotFilter filter in slot.Properties.Filters)
+                    {
+                        filter.Filter ??= new HashSet<MongoId>();
+                        foreach (MongoId id in radioIds)
+                        {
+                            filter.Filter.Add(id);
+                        }
+                    }
+
+                    patchedSlots++;
+                }
+            }
+
+            _logger.LogWithColor("[S&M-PRT] Radios allowed in " + patchedSlots + " special slot(s)", LogTextColor.Gray);
+        }
+
         private void EnableTraderBuyback()
         {
             var radioIds = new HashSet<MongoId> { new MongoId(BaofengTplId), new MongoId(AzartTplId), new MongoId(KenwoodTplId), new MongoId(T460TplId), new MongoId(YaesuTplId), new MongoId(Dp4800TplId), new MongoId(Dp4601eTplId), new MongoId(Xts5000TplId), new MongoId(HarrisTplId), new MongoId(Trc83TplId), new MongoId(AlincoTplId), new MongoId(KenwoodProTalkTplId), new MongoId(Mth800TplId) };
@@ -1559,30 +1793,76 @@ namespace RadioMod.Server
             }
         }
 
+        private readonly struct BannerLine
+        {
+            public readonly string? Text;
+            public readonly LogTextColor Color;
+            public readonly bool IsDivider;
+
+            private BannerLine(string? text, LogTextColor color, bool isDivider)
+            {
+                Text = text;
+                Color = color;
+                IsDivider = isDivider;
+            }
+
+            public static BannerLine Of(string text, LogTextColor color) => new BannerLine(text, color, false);
+            public static BannerLine Divider() => new BannerLine(null, LogTextColor.Cyan, true);
+        }
+
         private void LogStartupBanner(int patchedContainers, bool fikaInstalled)
         {
-            const int width = 48;
-            string?[] lines =
+            bool batteries = IsBatteriesModInstalled();
+
+            // Fixed-width label column keeps the values aligned in a readable second column.
+            const string labelRadios = "RADIOS";
+            const string labelFika = "FIKA";
+            const string labelPower = "POWER";
+            const int labelWidth = 10;
+
+            var lines = new List<BannerLine>
             {
-                "PRT " + DisplayVersion,
-                null,
-                "Radios loaded: 13",
-                "Fika detected: " + (fikaInstalled ? "yes (full radio functionality)" : "no (collectible-only mode)"),
+                BannerLine.Of("S&M-PRT  ·  PORTABLE RADIO TRANSMITTER", LogTextColor.Cyan),
+                BannerLine.Of("v" + DisplayVersion + "  ·  Suomi & makshepard", LogTextColor.Gray),
+                BannerLine.Divider(),
+                BannerLine.Of(labelRadios.PadRight(labelWidth) + "13 loaded", LogTextColor.White),
+                BannerLine.Of(
+                    labelFika.PadRight(labelWidth) + (fikaInstalled
+                        ? "detected  —  full radio functionality"
+                        : "not found  —  collectible-only mode"),
+                    fikaInstalled ? LogTextColor.Green : LogTextColor.Yellow),
+                BannerLine.Of(
+                    labelPower.PadRight(labelWidth) + (batteries
+                        ? "batteries detected  —  radios take battery slots"
+                        : "no battery mod  —  radios always powered"),
+                    batteries ? LogTextColor.Green : LogTextColor.Gray),
             };
 
-            _logger.LogWithColor("╔" + new string('═', width) + "╗", LogTextColor.Cyan);
-            foreach (string? line in lines)
+            // Width follows the longest line, so no value can ever overflow the frame.
+            int inner = 2;
+            foreach (BannerLine line in lines)
             {
-                if (line == null)
+                if (line.Text != null && line.Text.Length > inner)
                 {
-                    _logger.LogWithColor("╠" + new string('═', width) + "╣", LogTextColor.Cyan);
+                    inner = line.Text.Length;
+                }
+            }
+            inner += 4;
+
+            _logger.LogWithColor("┌" + new string('─', inner) + "┐", LogTextColor.Cyan);
+            foreach (BannerLine line in lines)
+            {
+                if (line.IsDivider)
+                {
+                    _logger.LogWithColor("├" + new string('─', inner) + "┤", LogTextColor.Cyan);
                     continue;
                 }
 
-                _logger.LogWithColor("║ " + line.PadRight(width - 1) + "║", LogTextColor.White);
+                _logger.LogWithColor("│  " + line.Text!.PadRight(inner - 2) + "│", line.Color);
             }
-            _logger.LogWithColor("╚" + new string('═', width) + "╝", LogTextColor.Cyan);
-            _logger.Success("[PRT] Load completed successfully");
+            _logger.LogWithColor("└" + new string('─', inner) + "┘", LogTextColor.Cyan);
+
+            _logger.Success("[S&M-PRT] Load completed successfully");
         }
 
         private int ExcludeFromSecuredContainers()
