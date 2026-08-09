@@ -1,7 +1,19 @@
 # S&M-PRT - Portable Radio Transmitter (for FIKA only)
-**v1.0.0**  ·  built for SPT 4.0.13
+**v1.0.0E — experimental**  ·  built for SPT 4.1.x
 - **Made by _Suomi & makshepard**
 - **Developed with the help of AI**
+
+> ### ⚠️ This is the experimental SPT 4.1 branch
+>
+> It builds and runs, but it has had very little in-game testing — expect rough edges.
+> For the stable build (SPT **4.0.13**), switch to the [`main`](../../tree/main) branch.
+>
+> **Battery support is inactive here.** [Batteries Not Included](https://forge.sp-tarkov.com/mod/2513/batteries-not-included)
+> has no 4.1 release yet, so the radios run as if no battery mod were installed. That is the intended
+> fallback, not a bug.
+>
+> Note that the install layout changed in SPT 4.1: the server side now goes to
+> `SPT_Runtime\user\mods\`, not `SPT\user\mods\`.
 
 Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Realistic TRC-83 to Harris AN/PRC-152 and the R-187P1), purchasable from traders or found in the world, with a full custom voice channel: range-based signal degradation, static, and a unique "voice" per radio.
 
@@ -16,7 +28,7 @@ Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Rea
 * Item names, descriptions, and on-screen notifications localized into 8 languages (Russian, English, German, Spanish, French, Polish, Italian, Czech), auto-detected from your game's language;
 * Radios can be carried in the special slots, alongside the compass, multitool and paracord;
 * **Raid Recordings (F9)** — optionally record radio traffic during a raid and play it back afterwards in a built-in browser, with waveform/spectrogram view, per-clip filtering and auto-cleanup. Off by default, enable it in F12;
-* **Optional battery support** — with [Batteries Not Included](https://forge.sp-tarkov.com/mod/2437/batteries-not-included) installed, every radio takes real AA/CR123A batteries (1 or 2 depending on the model, with per-radio runtimes), shows its charge on the inventory icon and on screen, warns on low power and shuts down when flat. Without that mod nothing changes — radios are simply always powered;
+* **Optional battery support** — with [Batteries Not Included](https://forge.sp-tarkov.com/mod/2513/batteries-not-included) installed, every radio takes real AA/CR123A batteries (1 or 2 depending on the model, with per-radio runtimes), shows its charge on the inventory icon and on screen, warns on low power and shuts down when flat. Without that mod nothing changes — radios are simply always powered. *(No 4.1-compatible release of that mod exists yet, so this is currently inactive on this branch.)*
 * If Project Fika is not installed, radios automatically fall back to being collectible-only items (no radio functionality) and can be displayed in the Hall of Fame instead;
 * All colors, indicator styles and on-screen scaling configurable in the BepInEx Configuration Manager (F12).
 
@@ -26,7 +38,7 @@ Realistic portable radio communication for EFT + FIKA co-op. 13 radios (from Rea
 
 [Project Fika](https://forge.sp-tarkov.com/mod/2326/project-fika)
 
-**Optional:** [Batteries Not Included](https://forge.sp-tarkov.com/mod/2437/batteries-not-included) — adds battery slots to the radios. Not required; without it the radios simply never run out of power.
+**Optional:** [Batteries Not Included](https://forge.sp-tarkov.com/mod/2513/batteries-not-included) — adds battery slots to the radios. Not required; without it the radios simply never run out of power.
 
 ---
 
@@ -72,6 +84,7 @@ The mod settings are located in‑game in the F12 menu under S&M-PRT *.*.* (see 
 
 ## Known Issues
 
+* **This is an experimental 4.1 port** — it compiles and loads, but has not been through the same amount of in-game testing as the stable build;
 * **When broadcasting inside buildings, sound quality degrades significantly due to the audio engine's behaviour** (currently unfixable);
 * When switching a radio from an invalid slot to a valid one (*e.g. from backpack to rig*), it does not get selected automatically (we are working on this);
 
