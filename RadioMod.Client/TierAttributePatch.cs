@@ -90,7 +90,7 @@ namespace RadioMod.Client
 
         private static void AddAttribute(Item item, string label, string value)
         {
-            item.Attributes.Add(new ItemAttributeClass(EItemAttributeId.Undefined)
+            item.Attributes.Add(new ItemAttribute(EItemAttributeId.Undefined)
             {
                 DisplayNameFunc = () => label,
                 Base = () => 0f,

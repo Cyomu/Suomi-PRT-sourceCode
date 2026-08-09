@@ -1,26 +1,30 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
+using ConsoleColour = Spectre.Console.Color;
+using SPTarkov.Common.Models.Logging;
 using SPTarkov.DI.Annotations;
 using SPTarkov.Server.Core.DI;
 using SPTarkov.Server.Core.Models.Common;
 using SPTarkov.Server.Core.Models.Eft.Common;
 using SPTarkov.Server.Core.Models.Eft.Common.Tables;
-using SPTarkov.Server.Core.Models.Logging;
 using SPTarkov.Server.Core.Models.Spt.Mod;
-using SPTarkov.Server.Core.Models.Spt.Server;
-using SPTarkov.Server.Core.Models.Utils;
+using SPTarkov.Server.Core.Models.Spt.Tables;
 using SPTarkov.Server.Core.Services;
-using SPTarkov.Server.Core.Services.Mod;
+using SPTarkov.Server.Core.Services.Modding.Custom;
 using SPTarkov.Server.Core.Utils.Json;
 
 namespace RadioMod.Server
 {
 
-    [Injectable(TypePriority = OnLoadOrder.PostDBModLoader + 1)]
+    // 4.1 dropped OnLoadOrder.PostDBModLoader; load order is now expressed purely as a TypePriority
+    // number, and we still need to run after the database is populated so our items can be added to
+    // it. int.MaxValue/2 keeps us late without fighting mods that legitimately want the very end.
+    [Injectable(TypePriority = int.MaxValue / 2)]
     public class RadioItemMod : IOnLoad
     {
-        internal const string DisplayVersion = "1.0.0";
+        internal const string DisplayVersion = "1.0.0E (experimental, SPT 4.1)";
 
         private const string CompassTplId = "5f4f9eb969cdc30ff33f09db";
 
@@ -85,17 +89,22 @@ namespace RadioMod.Server
         private const string SecuredContainerCategoryId = "5448bf274bdc2dfc2f8b456a";
 
         private readonly CustomItemService _customItemService;
-        private readonly DatabaseService _databaseService;
+        private readonly TemplateTable _templateTable;
+        private readonly TradersTable _tradersTable;
+        private readonly LocationTable _locationTable;
         private readonly ISptLogger<RadioItemMod> _logger;
 
-        public RadioItemMod(CustomItemService customItemService, DatabaseService databaseService, ISptLogger<RadioItemMod> logger)
+        // 4.1 replaced the single DatabaseService with individually injectable tables.
+        public RadioItemMod(CustomItemService customItemService, TemplateTable templateTable, TradersTable tradersTable, LocationTable locationTable, ISptLogger<RadioItemMod> logger)
         {
             _customItemService = customItemService;
-            _databaseService = databaseService;
+            _templateTable = templateTable;
+            _tradersTable = tradersTable;
+            _locationTable = locationTable;
             _logger = logger;
         }
 
-        public Task OnLoad()
+        public Task OnLoadAsync(CancellationToken cancellationToken)
         {
 
             bool fikaInstalled = IsFikaServerInstalled();
@@ -117,6 +126,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = BaofengTplId,
+                NewItemName = "prt_baofeng_uv5r",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 25500,
 
@@ -224,6 +234,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = AzartTplId,
+                NewItemName = "prt_azart_r187p1",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 150000,
                 FleaPriceRoubles = 67000,
@@ -331,6 +342,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = KenwoodTplId,
+                NewItemName = "prt_kenwood_th21bt",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 215750,
 
@@ -438,6 +450,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = T460TplId,
+                NewItemName = "prt_motorola_t460",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 40000,
 
@@ -543,6 +556,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = YaesuTplId,
+                NewItemName = "prt_yaesu_vx8dr",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 72000,
 
@@ -648,6 +662,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = Dp4800TplId,
+                NewItemName = "prt_motorola_dp4800",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 85000,
                 FleaPriceRoubles = 40000,
@@ -754,6 +769,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = Dp4601eTplId,
+                NewItemName = "prt_motorola_dp4601e",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 89990,
 
@@ -861,6 +877,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = Xts5000TplId,
+                NewItemName = "prt_motorola_xts5000",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 100000,
                 FleaPriceRoubles = 62000,
@@ -967,6 +984,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = HarrisTplId,
+                NewItemName = "prt_harris_anprc152",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 200000,
                 FleaPriceRoubles = 100000,
@@ -1073,6 +1091,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = Trc83TplId,
+                NewItemName = "prt_realistic_trc83",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 300000,
 
@@ -1180,6 +1199,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = AlincoTplId,
+                NewItemName = "prt_alinco_fake",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 42700,
 
@@ -1285,6 +1305,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = KenwoodProTalkTplId,
+                NewItemName = "prt_kenwood_protalk_xls",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 67000,
 
@@ -1390,6 +1411,7 @@ namespace RadioMod.Server
                 ItemTplToClone = radioCloneBase,
                 ParentId = radioParentId,
                 NewId = Mth800TplId,
+                NewItemName = "prt_motorola_mth800",
                 HandbookParentId = radioHandbookParentId,
                 HandbookPriceRoubles = 70000,
 
@@ -1562,7 +1584,7 @@ namespace RadioMod.Server
         /// </summary>
         private void AddBatterySlotsToRadios()
         {
-            var items = _databaseService.GetTables().Templates.Items;
+            var items = _templateTable.Items;
             int patched = 0;
 
             foreach (KeyValuePair<string, BatterySpec> entry in RadioBatterySpecs)
@@ -1608,7 +1630,7 @@ namespace RadioMod.Server
                 patched++;
             }
 
-            _logger.LogWithColor("[S&M-PRT] Battery slots added to " + patched + " radios", LogTextColor.Gray);
+            _logger.LogWithColor("[S&M-PRT] Battery slots added to " + patched + " radios", ConsoleColour.Grey);
         }
 
         private static string FormatRuntime(double hours)
@@ -1686,7 +1708,7 @@ namespace RadioMod.Server
 
         private void PatchHallOfFame()
         {
-            var items = _databaseService.GetTables().Templates.Items;
+            var items = _templateTable.Items;
 
             var smallRadioIds = new HashSet<MongoId> { new MongoId(T460TplId), new MongoId(AlincoTplId), new MongoId(KenwoodProTalkTplId), new MongoId(Mth800TplId) };
 
@@ -1741,7 +1763,7 @@ namespace RadioMod.Server
         /// </summary>
         private void AllowRadiosInSpecialSlots()
         {
-            var items = _databaseService.GetTables().Templates.Items;
+            var items = _templateTable.Items;
             var radioIds = new HashSet<MongoId>(RadioBatterySpecs.Keys.Select(id => new MongoId(id)));
             int patchedSlots = 0;
 
@@ -1772,14 +1794,14 @@ namespace RadioMod.Server
                 }
             }
 
-            _logger.LogWithColor("[S&M-PRT] Radios allowed in " + patchedSlots + " special slot(s)", LogTextColor.Gray);
+            _logger.LogWithColor("[S&M-PRT] Radios allowed in " + patchedSlots + " special slot(s)", ConsoleColour.Grey);
         }
 
         private void EnableTraderBuyback()
         {
             var radioIds = new HashSet<MongoId> { new MongoId(BaofengTplId), new MongoId(AzartTplId), new MongoId(KenwoodTplId), new MongoId(T460TplId), new MongoId(YaesuTplId), new MongoId(Dp4800TplId), new MongoId(Dp4601eTplId), new MongoId(Xts5000TplId), new MongoId(HarrisTplId), new MongoId(Trc83TplId), new MongoId(AlincoTplId), new MongoId(KenwoodProTalkTplId), new MongoId(Mth800TplId) };
             var buybackTraderIds = new[] { PeacekeeperTraderId, MechanicTraderId };
-            var traders = _databaseService.GetTables().Traders;
+            var traders = _tradersTable;
 
             foreach (string traderId in buybackTraderIds)
             {
@@ -1796,18 +1818,18 @@ namespace RadioMod.Server
         private readonly struct BannerLine
         {
             public readonly string? Text;
-            public readonly LogTextColor Color;
+            public readonly ConsoleColour TextColor;
             public readonly bool IsDivider;
 
-            private BannerLine(string? text, LogTextColor color, bool isDivider)
+            private BannerLine(string? text, ConsoleColour color, bool isDivider)
             {
                 Text = text;
-                Color = color;
+                TextColor = color;
                 IsDivider = isDivider;
             }
 
-            public static BannerLine Of(string text, LogTextColor color) => new BannerLine(text, color, false);
-            public static BannerLine Divider() => new BannerLine(null, LogTextColor.Cyan, true);
+            public static BannerLine Of(string text, ConsoleColour color) => new BannerLine(text, color, false);
+            public static BannerLine Divider() => new BannerLine(null, ConsoleColour.Cyan, true);
         }
 
         private void LogStartupBanner(int patchedContainers, bool fikaInstalled)
@@ -1822,20 +1844,20 @@ namespace RadioMod.Server
 
             var lines = new List<BannerLine>
             {
-                BannerLine.Of("S&M-PRT  ·  PORTABLE RADIO TRANSMITTER", LogTextColor.Cyan),
-                BannerLine.Of("v" + DisplayVersion + "  ·  Suomi & makshepard", LogTextColor.Gray),
+                BannerLine.Of("S&M-PRT  ·  PORTABLE RADIO TRANSMITTER", ConsoleColour.Cyan),
+                BannerLine.Of("v" + DisplayVersion + "  ·  Suomi & makshepard", ConsoleColour.Grey),
                 BannerLine.Divider(),
-                BannerLine.Of(labelRadios.PadRight(labelWidth) + "13 loaded", LogTextColor.White),
+                BannerLine.Of(labelRadios.PadRight(labelWidth) + "13 loaded", ConsoleColour.White),
                 BannerLine.Of(
                     labelFika.PadRight(labelWidth) + (fikaInstalled
                         ? "detected  —  full radio functionality"
                         : "not found  —  collectible-only mode"),
-                    fikaInstalled ? LogTextColor.Green : LogTextColor.Yellow),
+                    fikaInstalled ? ConsoleColour.Green : ConsoleColour.Yellow),
                 BannerLine.Of(
                     labelPower.PadRight(labelWidth) + (batteries
                         ? "batteries detected  —  radios take battery slots"
                         : "no battery mod  —  radios always powered"),
-                    batteries ? LogTextColor.Green : LogTextColor.Gray),
+                    batteries ? ConsoleColour.Green : ConsoleColour.Grey),
             };
 
             // Width follows the longest line, so no value can ever overflow the frame.
@@ -1849,25 +1871,25 @@ namespace RadioMod.Server
             }
             inner += 4;
 
-            _logger.LogWithColor("┌" + new string('─', inner) + "┐", LogTextColor.Cyan);
+            _logger.LogWithColor("┌" + new string('─', inner) + "┐", ConsoleColour.Cyan);
             foreach (BannerLine line in lines)
             {
                 if (line.IsDivider)
                 {
-                    _logger.LogWithColor("├" + new string('─', inner) + "┤", LogTextColor.Cyan);
+                    _logger.LogWithColor("├" + new string('─', inner) + "┤", ConsoleColour.Cyan);
                     continue;
                 }
 
-                _logger.LogWithColor("│  " + line.Text!.PadRight(inner - 2) + "│", line.Color);
+                _logger.LogWithColor("│  " + line.Text!.PadRight(inner - 2) + "│", line.TextColor);
             }
-            _logger.LogWithColor("└" + new string('─', inner) + "┘", LogTextColor.Cyan);
+            _logger.LogWithColor("└" + new string('─', inner) + "┘", ConsoleColour.Cyan);
 
             _logger.Success("[S&M-PRT] Load completed successfully");
         }
 
         private int ExcludeFromSecuredContainers()
         {
-            var items = _databaseService.GetTables().Templates.Items;
+            var items = _templateTable.Items;
             var radioIds = new HashSet<MongoId> { new MongoId(BaofengTplId), new MongoId(AzartTplId), new MongoId(KenwoodTplId), new MongoId(T460TplId), new MongoId(YaesuTplId), new MongoId(Dp4800TplId), new MongoId(Dp4601eTplId), new MongoId(Xts5000TplId), new MongoId(HarrisTplId), new MongoId(Trc83TplId), new MongoId(AlincoTplId), new MongoId(KenwoodProTalkTplId), new MongoId(Mth800TplId) };
             int patched = 0;
 
@@ -2164,7 +2186,7 @@ namespace RadioMod.Server
 
         private void AddRadiosToWorldLoot()
         {
-            SPTarkov.Server.Core.Models.Spt.Server.Locations locations = _databaseService.GetTables().Locations;
+            LocationTable locations = _locationTable;
 
             Location?[] civilianMaps =
             {
@@ -2180,7 +2202,7 @@ namespace RadioMod.Server
             const uint looseLootChancePerMille = 15;
             const uint staticLootChancePerMille = 60;
 
-            HandbookBase handbook = _databaseService.GetTables().Templates.Handbook;
+            HandbookBase handbook = _templateTable.Handbook;
             var itemCategoryId = new Dictionary<string, string>();
             foreach (HandbookItem hi in handbook.Items)
             {
@@ -2238,10 +2260,10 @@ namespace RadioMod.Server
 
         private void AddRadiosToTraders()
         {
-            TraderAssort skierAssort = _databaseService.GetTables().Traders[new MongoId(SkierTraderId)].Assort;
+            TraderAssort skierAssort = _tradersTable[new MongoId(SkierTraderId)].Assort;
             AddAssortEntry(skierAssort, "6d6f645f7261646961737369", BaofengTplId, 35575, 500, 800, 4, 1);
 
-            TraderAssort praporAssort = _databaseService.GetTables().Traders[new MongoId(PraporTraderId)].Assort;
+            TraderAssort praporAssort = _tradersTable[new MongoId(PraporTraderId)].Assort;
             AddAssortEntry(praporAssort, "6d6f645f72616469617a6172", AzartTplId, 284275, 60, 86, 1, 4);
             AddBarterAssortEntry(praporAssort, "6d6f645f617a617274626172", AzartTplId, 4, 70, 85, 2,
                 new List<List<(string TplId, int Count)>>
@@ -2255,16 +2277,16 @@ namespace RadioMod.Server
                     }
                 });
 
-            TraderAssort mechanicAssort = _databaseService.GetTables().Traders[new MongoId(MechanicTraderId)].Assort;
+            TraderAssort mechanicAssort = _tradersTable[new MongoId(MechanicTraderId)].Assort;
             AddAssortEntry(mechanicAssort, "6d6f645f726164696b656e77", KenwoodTplId, 250000, 1, 13, 1, 1);
 
-            TraderAssort jaegerAssort = _databaseService.GetTables().Traders[new MongoId(JaegerTraderId)].Assort;
+            TraderAssort jaegerAssort = _tradersTable[new MongoId(JaegerTraderId)].Assort;
             AddAssortEntry(jaegerAssort, "6d6f645f7261646974343630", T460TplId, 55750, 400, 600, 3, 1);
 
             AddAssortEntry(skierAssort, "6d6f645f7261646979616573", YaesuTplId, 583, 300, 500, 3, 2, EurosTplId);
             AddAssortEntry(skierAssort, "6d6f645f7261646964703438", Dp4800TplId, 908, 100, 200, 2, 3, EurosTplId);
 
-            TraderAssort peacekeeperAssort = _databaseService.GetTables().Traders[new MongoId(PeacekeeperTraderId)].Assort;
+            TraderAssort peacekeeperAssort = _tradersTable[new MongoId(PeacekeeperTraderId)].Assort;
             AddAssortEntry(peacekeeperAssort, "6d6f645f7261646964703436", Dp4601eTplId, 1000, 150, 175, 2, 3, DollarsTplId);
             AddAssortEntry(peacekeeperAssort, "6d6f645f7261646978747335", Xts5000TplId, 1350, 70, 100, 2, 4, DollarsTplId);
 
@@ -2291,7 +2313,7 @@ namespace RadioMod.Server
 
             AddAssortEntry(mechanicAssort, "6d6f645f7261646974726338", Trc83TplId, 314654, 1, 7, 1, 2);
 
-            TraderAssort fenceAssort = _databaseService.GetTables().Traders[new MongoId(FenceTraderId)].Assort;
+            TraderAssort fenceAssort = _tradersTable[new MongoId(FenceTraderId)].Assort;
             AddAssortEntry(fenceAssort, "6d6f645f72616469696c696e", AlincoTplId, 42700, 40, 100, 4, 1);
             AddBarterAssortEntry(fenceAssort, "6d6f645f616c696e63627472", AlincoTplId, 1, 20, 50, 3,
                 new List<List<(string TplId, int Count)>>

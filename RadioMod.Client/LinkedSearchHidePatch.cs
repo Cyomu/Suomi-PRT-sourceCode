@@ -33,7 +33,7 @@ namespace RadioMod.Client
         {
             try
             {
-                Type baseType = typeof(ItemInfoInteractionsAbstractClass<EItemInfoButton>);
+                Type baseType = typeof(EFT.UI.ContextInteractions<EItemInfoButton>);
 
                 Type[] implementations = baseType.Assembly.GetTypes()
                     .Where(t => !t.IsAbstract && baseType.IsAssignableFrom(t))
@@ -86,7 +86,10 @@ namespace RadioMod.Client
             try
             {
                 Type panelType = AccessTools.TypeByName("EFT.UI.ItemSpecificationPanel");
-                MethodInfo target = AccessTools.Method(panelType, "method_5");
+                // 4.1 de-obfuscated this: the panel rebuild that spawns the compatible-attribute
+                // dropdown rows used to be method_5, which in this build is an unrelated attribute
+                // predicate — patching it by the old name would silently do nothing.
+                MethodInfo target = AccessTools.Method(panelType, "RecreateAttributeBars");
                 if (target == null)
                 {
                     Plugin.LogAttributeDiagnostic("PRT: compatibility-row patch skipped — method not found");

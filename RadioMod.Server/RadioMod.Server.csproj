@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>RadioMod.Server</AssemblyName>
     <Version>0.9.8</Version>
     <LangVersion>latest</LangVersion>
@@ -11,19 +11,27 @@
 
   <ItemGroup>
     <Reference Include="SPTarkov.Server.Core">
-      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\SPT\SPTarkov.Server.Core.dll</HintPath>
+      <HintPath>E:\Games\EFT410\SPT_Runtime\SPTarkov.Server.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SPTarkov.DI">
-      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\SPT\SPTarkov.DI.dll</HintPath>
+      <HintPath>E:\Games\EFT410\SPT_Runtime\SPTarkov.DI.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SPTarkov.Common">
-      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\SPT\SPTarkov.Common.dll</HintPath>
+      <HintPath>E:\Games\EFT410\SPT_Runtime\SPTarkov.Common.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="SemanticVersioning">
-      <HintPath>H:\Games\SptAkiDevFika\EscapeFromTarkov\SPT\SemanticVersioning.dll</HintPath>
+      <HintPath>E:\Games\EFT410\SPT_Runtime\SemanticVersioning.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Spectre.Console">
+      <HintPath>E:\Games\EFT410\SPT_Runtime\Spectre.Console.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Spectre.Console.Ansi">
+      <HintPath>E:\Games\EFT410\SPT_Runtime\Spectre.Console.Ansi.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

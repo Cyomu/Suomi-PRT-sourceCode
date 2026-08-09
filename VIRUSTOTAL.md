@@ -1,29 +1,32 @@
-# VirusTotal Scan Results — v1.0.0
+# VirusTotal Scan Results — v1.0.0E (experimental, SPT 4.1)
 
-Security scans for the compiled binaries distributed with this release.
+Security scans for the compiled binaries of the **experimental SPT 4.1 build**. These are different
+binaries from the stable 4.0.13 release, so they have their own hashes and their own scan reports.
 
 | File | SHA-256 | Result | VirusTotal Link |
 |---|---|---|---|
-| `PRT-fika.Client.dll` | `38CCFC469308F7C57656AB33CF098717CFA6824B0EFF0E2E9722624065D47379` | Clean — no detections | https://www.virustotal.com/gui/file/38ccfc469308f7c57656ab33cf098717cfa6824b0eff0e2e9722624065d47379 |
-| `PRT-fika.Server.dll` | `9FA858428C52BF6FD1D0C44B50D281EBAF0F68300DA61C1CE1A2A0C5650467F6` | 1 / 71 — see note below | https://www.virustotal.com/gui/file/9fa858428c52bf6fd1d0c44b50d281ebaf0f68300da61c1ce1a2a0c5650467f6 |
+| `PRT-fika.Client.dll` | `23E692534150C6FF97035F119BF0AEB00B084F29D5484AE20DD305AC677598C1` | Clean — 0 / 71 | [VirusTotal](https://www.virustotal.com/gui/file/23e692534150c6ff97035f119bf0aeb00b084f29d5484ae20dd305ac677598c1) |
+| `PRT-fika.Server.dll` | `4E71633ABB61FE7E1D09C6A7E79CAD7FBEA5FD7A88F40B843EF4DFA7FF032BD6` | 1 / 71 — false positive, see below | [VirusTotal](https://www.virustotal.com/gui/file/4e71633abb61fe7e1d09c6a7e79cad7fbea5fd7a88f40b843ef4dfa7ff032bd6) |
 
 ---
 
 ## About the single detection on the server DLL
 
-One engine out of 71 — **MaxSecure** — flags `PRT-fika.Server.dll` as `Trojan.Malware.300983.susgen`. **This is a false positive.** Why we are confident:
+One engine out of 71 flags the server DLL. This is a false positive, and the same detection appears
+on the stable 4.0.13 build, where it comes from MaxSecure as `Trojan.Malware.300983.susgen` — the
+`susgen` suffix literally means *suspicious generic*: a heuristic guess, not a match against known
+malware. It fires on traits like "small, unsigned .NET assembly", which describes practically every
+SPT server mod ever published.
 
-* **70 of 71 engines report the file as clean**, including every major vendor (Microsoft, Kaspersky, ESET, Bitdefender, Dr.Web and the rest). A real threat does not slip past all of them and get caught only by one small engine.
-* **The signature name says so itself.** The `susgen` suffix stands for *suspicious generic* — it is not a match against a known piece of malware, but a heuristic guess. It fires on traits like "small .NET assembly, not signed with a code-signing certificate", which describes essentially every SPT server mod ever published.
-* **The previous release (v0.9.7) was flagged by nobody at all**, built the same way from the same kind of code. Nothing about how the mod is built changed — MaxSecure's heuristics did.
-* **There is nothing here for it to find.** The mod contains no obfuscation, no packing, no downloading or loading of external code, and makes no network requests of its own. On the server side it only registers items, traders and loot in SPT's own database at startup.
+The mod contains no obfuscation, no packing, no loading of external code and makes no network
+requests of its own. On the server side it only registers items, traders and loot in SPT's own
+database at startup.
 
 ## Verify it yourself
 
-You do not have to take our word for it:
-
-* **Check the hashes.** Compare the SHA-256 of the files you downloaded against the table above (in PowerShell: `Get-FileHash .\PRT-fika.Server.dll`). If they match, you have exactly the files we scanned.
-* **Read the source.** The full, unobfuscated source code of both DLLs is published at <https://github.com/Cyomu/Suomi-PRT-sourceCode> — you can read exactly what the mod does, and build it yourself if you prefer.
-* **Rescan at any time.** Open the links above and press *Reanalyze* for fresh results instead of a cached report.
-
-If your antivirus quarantines the server DLL, this is the detection behind it.
+* **Check the hashes.** Compare the SHA-256 of the files you downloaded against the table above
+  (in PowerShell: `Get-FileHash .\PRT-fika.Server.dll`).
+* **Read the source.** The full, unobfuscated source of this build is in the `spt-4.1` branch of this
+  repository — you can read exactly what it does, or build it yourself.
+* **Rescan at any time.** Open the links above and press *Reanalyze* for fresh results instead of a
+  cached report.

@@ -24,7 +24,7 @@ namespace RadioMod.Client
     [BepInDependency("com.fika.core")]
     public class Plugin : BaseUnityPlugin
     {
-        internal const string DisplayVersion = "1.0.0";
+        internal const string DisplayVersion = "1.0.0E (experimental, SPT 4.1)";
 
         internal const string TestFrequency = "144.500";
         private const float HeartbeatInterval = 60f;
@@ -3668,7 +3668,7 @@ namespace RadioMod.Client
 
             try
             {
-                string code = LocaleManagerClass.LocaleManagerClass?.String_1;
+                string code = EFT.LocalizationManager.Instance?._currentApplicationCulture;
                 switch (code)
                 {
                     case "ru":
@@ -4452,7 +4452,7 @@ namespace RadioMod.Client
         {
             try
             {
-                GInterface495<EEftScreenType> controller = CurrentScreenSingletonClass.Instance?.CurrentBaseScreenController;
+                EFT.UI.Screens.IBaseScreenController<EEftScreenType> controller = EFT.UI.Screens.EftScreenManager.Instance?.CurrentBaseScreenController;
                 return controller != null && controller.ScreenType == EEftScreenType.Settings;
             }
             catch
@@ -5214,8 +5214,8 @@ namespace RadioMod.Client
 
             try
             {
-                ClientApplication<ISession> app = Singleton<ClientApplication<ISession>>.Instance;
-                InfoClass info = app?.GetClientBackEndSession()?.Profile?.Info;
+                ClientApplication<IClientSession> app = Singleton<ClientApplication<IClientSession>>.Instance;
+                ProfileInfo info = app?.GetClientBackEndSession()?.Profile?.Info;
                 if (info == null || string.IsNullOrEmpty(info.Nickname))
                 {
                     return false;
