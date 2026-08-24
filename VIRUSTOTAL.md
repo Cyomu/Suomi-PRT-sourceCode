@@ -5,7 +5,7 @@ binaries from the stable 4.0.13 release, so they have their own hashes and their
 
 | File | SHA-256 | Result | VirusTotal Link |
 |---|---|---|---|
-| `PRT-fika.Client.dll` | `d503289bf30d870cd8393a5086ee0a28c41ce61fa1486e00b867914024f4ff2d` | Clean — 0 / 69 | [VirusTotal](https://www.virustotal.com/gui/file/d503289bf30d870cd8393a5086ee0a28c41ce61fa1486e00b867914024f4ff2d) |
+| `PRT-fika.Client.dll` | `d503289bf30d870cd8393a5086ee0a28c41ce61fa1486e00b867914024f4ff2d` | 0 / 69 | [VirusTotal](https://www.virustotal.com/gui/file/d503289bf30d870cd8393a5086ee0a28c41ce61fa1486e00b867914024f4ff2d) |
 | `PRT-fika.Server.dll` | `ce3fe20925305c42dedaea33387c7d0545d85e1b836d42015e704d409cdcfad9` | 0 / 70 | [VirusTotal](https://www.virustotal.com/gui/file/ce3fe20925305c42dedaea33387c7d0545d85e1b836d42015e704d409cdcfad9) |
 
 ---
