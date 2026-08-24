@@ -1,4 +1,4 @@
-# VirusTotal Scan Results — v1.0.0E (experimental, SPT 4.1)
+# VirusTotal Scan Results — v1.0.2
 
 Security scans for the compiled binaries of the **experimental SPT 4.1 build**. These are different
 binaries from the stable 4.0.13 release, so they have their own hashes and their own scan reports.
