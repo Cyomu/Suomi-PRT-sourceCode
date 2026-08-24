@@ -20,11 +20,12 @@ using UnityEngine;
 
 namespace RadioMod.Client
 {
-    [BepInPlugin("com.suomi.makshepard.smprt", "S&M-PRT", "1.0.0")]
+    [BepInPlugin("com.suomi.makshepard.smprt", "S&M-PRT", "1.0.2")]
     [BepInDependency("com.fika.core")]
-    public class Plugin : BaseUnityPlugin
+    // Partial: the in-raid HUD rendering lives in Plugin.Hud.cs.
+    public partial class Plugin : BaseUnityPlugin
     {
-        internal const string DisplayVersion = "1.0.0E (experimental, SPT 4.1)";
+        internal const string DisplayVersion = "1.0.2 (experimental, SPT 4.1)";
 
         internal const string TestFrequency = "144.500";
         private const float HeartbeatInterval = 60f;
@@ -593,7 +594,16 @@ namespace RadioMod.Client
 
         private enum CleanupFrequency { Never, EveryRaid, Every3Raids, Every5Raids, Every10Raids }
 
-        private enum UiTheme { Auto, BEAR, USEC }
+        /// <summary>
+        /// Master switch between the frozen pre-1.0.0-E look and the military-radio redesign.
+        /// The enum itself lives in Ui/UiStyle.cs because the renderers behind the style seam
+        /// need it and cannot see private members of this class.
+        /// </summary>
+        private ConfigEntry<UiStyle> _uiStyle;
+
+        // Seven palettes. Auto still follows the player side; the five added ones are explicit
+        // choices, because nothing in a profile says "TerraGroup".
+        internal enum UiTheme { Auto, BEAR, USEC, UNTAR, RUAF, BlackDivision, TerraGroup, SCAV }
         private ConfigEntry<UiTheme> _uiTheme;
 
         private enum NotificationTheme { FollowWindow, BEAR, USEC }
@@ -604,7 +614,6 @@ namespace RadioMod.Client
         private ConfigEntry<float> _indicatorScale;
         private ConfigEntry<float> _notificationScale;
 
-        private ConfigEntry<bool> _jamRadioInDeadZones;
         private bool _cachedInRadioDeadZone;
 
         /// <summary>
@@ -612,7 +621,12 @@ namespace RadioMod.Client
         /// tier. A set rather than a single id so another map can be added with one line.
         /// </summary>
         private static readonly HashSet<string> RadioDeadZoneLocations =
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "labyrinth" };
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "labyrinth", "laboratory" };
+
+        // The Alinco exception and its anomalies follow the jammed maps exactly — one list, not two.
+        // Two sets with the same contents would be a trap: someone adds a map to one, forgets the
+        // other, and the anomaly quietly stops matching the jamming.
+        private bool _cachedInAlincoAnomalyZone;
 
         private enum UiLanguage { Auto, Russian, English, German, Spanish, French, Polish, Italian, Czech }
         private static ConfigEntry<UiLanguage> _uiLanguageOverride;
@@ -654,6 +668,9 @@ namespace RadioMod.Client
         private int _raidReviewDayIndex;
         private RaidReviewClipInfo[] _raidReviewAllClips = new RaidReviewClipInfo[0];
         private RaidReviewClipInfo[] _raidReviewClips = new RaidReviewClipInfo[0];
+
+        /// <summary>Selected map on the location bar, or null for all of them.</summary>
+        private string _raidReviewLocationFilter;
         private float _raidReviewListRefreshTime;
         private string _raidReviewFilter = "";
         private ConfigEntry<bool> _raidReviewNewestFirst;
@@ -700,6 +717,14 @@ namespace RadioMod.Client
             public string Path;
             public string FileName;
             public string DisplayLabel;
+
+            // Same data as DisplayLabel, kept unjoined so the Instrument journal can lay it out in
+            // columns. Classic keeps rendering the single composed string it always did.
+            public string TimeText;
+            public string SpeakerText;
+            public string DistanceText;
+            public string RadioText;
+
             public string SearchText;
             public string Location;
             public float TimeOfDaySeconds;
@@ -870,9 +895,64 @@ namespace RadioMod.Client
             BepInEx.Logging.Logger.Listeners.Add(_fileLogListener);
 
             // Section order in the F12 menu follows FIRST-registration order, not the Order number
-            // (that only sorts entries within a section) — so the eight Config.Bind groups below run
-            // in exactly the sequence the sections should appear: Hotkeys, Volume, Radio, Notifications,
-            // Indicators, Colors, Raid Recordings, Developer (Developer always last on purpose).
+            // (that only sorts entries within a section) — so the nine Config.Bind groups below run
+            // in exactly the sequence the sections should appear: Interface, Hotkeys, Volume, Radio,
+            // Notifications, Indicators, Colors, Raid Recordings, Developer (Developer always last
+            // on purpose). The numeric prefixes are kept in the names as well, so the intended order
+            // still reads correctly anywhere the sections happen to be sorted by name instead.
+
+            // ---- 0. Interface ----
+            // A new section rather than an existing one: renaming a section orphans its values in
+            // the .cfg and silently resets them, while adding one costs existing players nothing.
+            _uiStyle = Config.Bind(
+                "0. Interface",
+                "UI Style",
+                UiStyle.Classic,
+                Desc("Classic is the look from previous versions and never changes. Instrument is the military-radio redesign. Switching takes effect immediately, no restart needed.", 10));
+
+            UiStyleState.Bind(_uiStyle);
+
+            _soundStyle = Config.Bind(
+                "2. Volume",
+                "Transmission Cues",
+                SoundStyle.Classic,
+                Desc("Start and end cues for transmitting and receiving. Classic uses the four recorded sets shared between the radios. PerRadio synthesises an individual cue for each of the thirteen: a PTT click plus the tone its signalling family would use, shaped by that radio own passband. The recorded files are kept either way.", 5));
+
+            _interferenceCharacter = Config.Bind(
+                "3. Radio",
+                "Interference Character",
+                InterferenceCharacter.Classic,
+                Desc("How radios degrade at the edge of range. Classic is the behaviour from previous versions: one hiss curve for every radio. PerFamily makes it depend on the set - digital radios (DMR, TETRA, P25) stay clean and then drop whole words instead of hissing, analogue ones fade into noise, military ones keep a low noise floor. Does not change the radios themselves, only how their loss of signal sounds.", 40));
+
+            _instrumentSignalStyle = Config.Bind(
+                "0. Interface",
+                "Signal Readout (Instrument)",
+                InstrumentSignalStyle.SMeter,
+                Desc("Signal presentation in the Instrument style. SMeter = needle across an S1-S9 scale with the figure in dBm. Bars = a segmented strip. Dbm = the number only. ArcGauge = a curved scale. VuNeedle = a boxed analogue meter. Ignored while UI Style is Classic.", 20));
+
+            _instrumentStateStyle = Config.Bind(
+                "0. Interface",
+                "State Readout (Instrument)",
+                InstrumentStateStyle.LcdReadout,
+                Desc("How TX / RX / PWR / DUP are shown in the Instrument style. LcdReadout = lettering on a plate. Dots and Blocks = a lamp beside each caption. Stencil = painted markings. Pills = filled plates. Ignored while UI Style is Classic.", 22));
+
+            _instrumentBatteryStyle = Config.Bind(
+                "0. Interface",
+                "Battery Readout (Instrument)",
+                InstrumentBatteryStyle.Segments,
+                Desc("How battery charge is shown in the Instrument style. Segments = a segmented bar with the figure. Percent = the figure only. Volts = nominal pack voltage instead of a percentage. Only visible when a battery mod gives the radio battery slots.", 24));
+
+            _showRadioNameplate = Config.Bind(
+                "0. Interface",
+                "Radio Nameplate (Instrument)",
+                false,
+                Desc("Show the model and tier of the active radio on the chassis. Off by default: you already know which radio you are carrying, and the row costs vertical space in the corner of the screen.", 30));
+
+            _previewScale = Config.Bind(
+                "0. Interface",
+                "Preview Scale",
+                2f,
+                Desc("How much the settings preview magnifies the chassis. Affects the preview only, never the HUD in a raid.", new AcceptableValueRange<float>(1f, 4f), 40));
 
             // ---- 1. Hotkeys ----
             _radioToggleModifier = Config.Bind(
@@ -919,11 +999,6 @@ namespace RadioMod.Client
                 UiLanguage.Auto,
                 Desc("Language used for on-screen notifications and the Raid Recordings browser. 'Auto' follows the game's current language.", 30));
 
-            _jamRadioInDeadZones = Config.Bind(
-                "3. Radio",
-                "Jam Radio in Labyrinth",
-                true,
-                Desc("On the Labyrinth map radio traffic is drowned in heavy interference and nothing can be made out, no matter which radio is used. Turn off to allow normal radio there.", 20));
 
             _ambientCombatSoundEnabled = Config.Bind(
                 "3. Radio",
@@ -1798,6 +1873,10 @@ namespace RadioMod.Client
                 Path = path,
                 FileName = Path.GetFileName(path),
                 DisplayLabel = label,
+                TimeText = time,
+                SpeakerText = speaker.ToUpperInvariant(),
+                DistanceText = distanceLabel,
+                RadioText = string.IsNullOrEmpty(radio) ? "" : radio.ToUpperInvariant(),
                 SearchText = (speaker + " " + location + " " + radio).ToLowerInvariant(),
                 Location = location,
                 TimeOfDaySeconds = ParseTimeOfDaySeconds(time),
@@ -1841,6 +1920,14 @@ namespace RadioMod.Client
             _raidReviewCurrentIndex = -1;
 
             IEnumerable<RaidReviewClipInfo> query = _raidReviewAllClips;
+
+            // Location filter from the map bar. Applied before the text search so the counts shown
+            // on the bar always describe the whole day, not whatever the search has narrowed it to.
+            if (!string.IsNullOrEmpty(_raidReviewLocationFilter))
+            {
+                query = query.Where(c =>
+                    string.Equals(c.Location, _raidReviewLocationFilter, StringComparison.OrdinalIgnoreCase));
+            }
 
             string filter = (_raidReviewFilter ?? string.Empty).Trim().ToLowerInvariant();
             if (filter.Length > 0)
@@ -1980,6 +2067,29 @@ namespace RadioMod.Client
 
             _raidReviewNowPlaying = null;
             _raidReviewCurrentIndex = -1;
+        }
+
+        private GUIStyle _waveTickStyle;
+
+        /// <summary>Tick captions under the waveform: small, unobtrusive, never wrapped.</summary>
+        private GUIStyle WaveTickStyle
+        {
+            get
+            {
+                if (_waveTickStyle == null)
+                {
+                    _waveTickStyle = new GUIStyle(MilStyle.DimLabel)
+                    {
+                        fontSize = UiTokens.SizeMicro,
+                        alignment = TextAnchor.LowerLeft,
+                        wordWrap = false,
+                        clipping = TextClipping.Clip,
+                    };
+                    UiTokens.WithFont(_waveTickStyle);
+                }
+
+                return _waveTickStyle;
+            }
         }
 
         private static string FormatClipTime(float seconds)
@@ -2257,6 +2367,14 @@ namespace RadioMod.Client
             GUI.color = MilStyle.Bg;
             GUI.DrawTexture(area, Texture2D.whiteTexture);
 
+            // Instrument turns the plot into an instrument: division grid behind the trace and a
+            // labelled time scale under it, so a position on the waveform reads as a time and not
+            // just as a place. Classic keeps the plain plot it always had.
+            if (UiStyleState.IsInstrument)
+            {
+                DrawWaveformGrid(area);
+            }
+
             if (_raidReviewWaveform.Length == 0)
             {
                 float idlePulse = 0.35f + 0.15f * Mathf.Sin(Time.unscaledTime * 1.5f);
@@ -2311,8 +2429,91 @@ namespace RadioMod.Client
             GUI.color = Color.white;
         }
 
+        /// <summary>
+        /// Elapsed time printed at the playhead, so a glance gives a number and not just a position.
+        /// Instrument only; Classic keeps the bare line it always had.
+        /// </summary>
+        private void DrawPlayheadTimecode(Rect area)
+        {
+            if (!UiStyleState.IsInstrument
+                || _raidReviewAudioSource == null
+                || _raidReviewAudioSource.clip == null
+                || _raidReviewAudioSource.clip.length <= 0f)
+            {
+                return;
+            }
+
+            float progress = Mathf.Clamp01(_raidReviewAudioSource.time / _raidReviewAudioSource.clip.length);
+            float x = area.x + area.width * progress;
+
+            // Flips to the left of the head near the right edge so the readout never leaves the plot.
+            const float boxW = 42f;
+            bool flip = x + boxW + 4f > area.xMax;
+            Rect box = new Rect(flip ? x - boxW - 3f : x + 3f, area.y + 2f, boxW, 13f);
+
+            Color prev = GUI.color;
+            GUI.color = new Color(MilStyle.Bg.r, MilStyle.Bg.g, MilStyle.Bg.b, 0.85f);
+            GUI.DrawTexture(box, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(box, FormatClipTime(_raidReviewAudioSource.time), MilStyle.ValueLabel);
+            GUI.color = prev;
+        }
+
+        /// <summary>
+        /// Division grid and time scale for the Instrument look. Ticks are chosen from the clip
+        /// length so a long recording does not end up with a wall of lines.
+        /// </summary>
+        private void DrawWaveformGrid(Rect area)
+        {
+            Color prev = GUI.color;
+            float rule = UiTokens.Hairline;
+
+            GUI.color = new Color(MilStyle.Border.r, MilStyle.Border.g, MilStyle.Border.b, 0.35f);
+            for (int i = 1; i < 4; i++)
+            {
+                float y = area.y + area.height * i / 4f;
+                GUI.DrawTexture(new Rect(area.x, y, area.width, rule), Texture2D.whiteTexture);
+            }
+
+            float total = _raidReviewAudioSource != null && _raidReviewAudioSource.clip != null
+                ? _raidReviewAudioSource.clip.length
+                : 0f;
+
+            // One tick per second up to 15 s, then per five, then per ten. Keeps the scale legible
+            // whether the clip is a two-second call or a two-minute one.
+            float step = total <= 15f ? 1f : (total <= 60f ? 5f : 10f);
+
+            if (total <= 0.01f)
+            {
+                GUI.color = prev;
+                return;
+            }
+
+            for (float t = step; t < total; t += step)
+            {
+                float x = area.x + area.width * (t / total);
+                GUI.color = new Color(MilStyle.Border.r, MilStyle.Border.g, MilStyle.Border.b, 0.5f);
+                GUI.DrawTexture(new Rect(x, area.y, rule, area.height), Texture2D.whiteTexture);
+
+                GUI.color = Color.white;
+
+                // Was 44x12 hard against the bottom edge, which clipped the glyphs. The label now
+                // has real room and sits inside the plot, and the last tick is skipped when it
+                // would run past the right edge instead of being drawn cut in half.
+                float labelW = 46f;
+                if (x + labelW + 3f <= area.xMax)
+                {
+                    GUI.Label(new Rect(x + 3f, area.yMax - 17f, labelW, 15f), FormatClipTime(t), WaveTickStyle);
+                }
+            }
+
+            GUI.color = prev;
+        }
+
         private void DrawWaveformPlayhead(Rect area)
         {
+            DrawPlayheadTimecode(area);
+
             if (_raidReviewAudioSource == null || _raidReviewAudioSource.clip == null
                 || _raidReviewAudioSource.clip.length <= 0f || _raidReviewCurrentIndex < 0)
             {
@@ -2382,7 +2583,17 @@ namespace RadioMod.Client
             private static Texture2D _backdropTex;
 
             private static bool _built;
-            private static bool _builtAsBear;
+            private static UiTheme _builtTheme = (UiTheme)(-1);
+
+            /// <summary>Darkest colour of the palette, for text drawn on a filled button.</summary>
+            public static Color Ink;
+
+            /// <summary>
+            /// Styles are cached, so the cache key has to include the UI style as well as the
+            /// faction — otherwise switching to Instrument would keep Classic's fonts until the
+            /// player also happened to change faction.
+            /// </summary>
+            private static bool _builtAsInstrument;
 
             /// <summary>Colour set for a faction, resolved without touching the applied theme.</summary>
             public struct Palette
@@ -2391,6 +2602,11 @@ namespace RadioMod.Client
                 public bool IsBear;
             }
 
+            /// <summary>
+            /// Notifications can run a different palette to the window, so they resolve one by
+            /// name rather than reading the applied theme. Kept taking a bool because that is what
+            /// the notification setting still offers: follow the window, or force one of two sides.
+            /// </summary>
             public static Palette GetPalette(bool bear)
             {
                 return bear
@@ -2416,34 +2632,8 @@ namespace RadioMod.Client
                     };
             }
 
-            private static void SetBearPalette()
-            {
-                Bg = new Color(0.043f, 0.055f, 0.027f);
-                Panel = new Color(0.106f, 0.129f, 0.075f);
-                Border = new Color(0.227f, 0.271f, 0.149f);
-                BtnFill = new Color(0.290f, 0.353f, 0.157f);
-                Accent = new Color(0.561f, 0.749f, 0.353f);
-                AccentBright = new Color(0.722f, 0.902f, 0.478f);
-                Signal = new Color(0.757f, 0.153f, 0.176f);
-                SignalBright = new Color(0.910f, 0.765f, 0.286f);
-                TextPrimary = new Color(0.839f, 0.863f, 0.769f);
-                TextMuted = new Color(0.431f, 0.478f, 0.333f);
-            }
-
-            private static void SetUsecPalette()
-            {
-                Bg = new Color(0.063f, 0.094f, 0.133f);
-                Panel = new Color(0.106f, 0.157f, 0.212f);
-                Border = new Color(0.180f, 0.255f, 0.333f);
-                BtnFill = new Color(0.294f, 0.573f, 0.859f);
-                Accent = new Color(0.498f, 0.714f, 0.910f);
-                AccentBright = new Color(0.773f, 0.886f, 0.980f);
-                Signal = new Color(0.294f, 0.573f, 0.859f);
-                SignalBright = new Color(1f, 1f, 1f);
-                TextPrimary = new Color(0.894f, 0.929f, 0.961f);
-                TextMuted = new Color(0.486f, 0.576f, 0.659f);
-            }
-
+            
+            
             private static Texture2D SolidTex(Color c)
             {
                 var tex = new Texture2D(1, 1);
@@ -2480,9 +2670,11 @@ namespace RadioMod.Client
                 }
             }
 
-            public static void ApplyTheme(bool bear)
+            public static void ApplyTheme(UiTheme theme)
             {
-                if (_built && _builtAsBear == bear)
+                bool instrument = UiStyleState.IsInstrument;
+
+                if (_built && _builtTheme == theme && _builtAsInstrument == instrument)
                 {
                     return;
                 }
@@ -2497,16 +2689,30 @@ namespace RadioMod.Client
                     DestroyTex(_backdropTex);
                 }
 
-                IsBear = bear;
-                _built = true;
-                _builtAsBear = bear;
+                ThemePalette p = GetThemePalette(theme);
 
-                if (bear) { SetBearPalette(); } else { SetUsecPalette(); }
+                // IsBear now means "this palette uses stencil chrome", which is what every call site
+                // was really asking. Keeping the name avoids churning twenty unrelated lines; the
+                // meaning is documented on the field.
+                IsBear = p.Stencil;
+                _built = true;
+                _builtTheme = theme;
+                _builtAsInstrument = instrument;
+
+                Bg = p.Bg; Panel = p.Panel; Border = p.Border; BtnFill = p.BtnFill;
+                Accent = p.Accent; AccentBright = p.AccentBright;
+                Signal = p.Signal; SignalBright = p.SignalBright;
+                TextPrimary = p.TextPrimary; TextMuted = p.TextMuted;
+                Ink = p.Ink;
+
+                // Generated textures are built from the palette, so they have to go with it —
+                // otherwise a faction switch would keep the previous side colours on every panel.
+                ClearUiTextureCache();
 
                 _bgTex = SolidTex(Bg);
                 _btnTex = SolidTex(BtnFill);
                 _panelTex = SolidTex(Panel);
-                _hoverTex = SolidTex(bear ? SignalBright : AccentBright);
+                _hoverTex = SolidTex(IsBear ? SignalBright : AccentBright);
                 _borderTex = SolidTex(Border);
                 _backdropTex = BackdropTex();
 
@@ -2522,7 +2728,7 @@ namespace RadioMod.Client
 
                 SectionLabel = new GUIStyle(GUI.skin.label)
                 {
-                    normal = { textColor = bear ? SignalBright : Accent },
+                    normal = { textColor = IsBear ? SignalBright : Accent },
                     fontStyle = FontStyle.Bold,
                     fontSize = 11,
                     padding = new RectOffset(0, 0, 2, 2),
@@ -2532,10 +2738,10 @@ namespace RadioMod.Client
                 // 9-slice border would stretch their corners and reintroduce the default look.
                 Button = new GUIStyle(GUI.skin.button)
                 {
-                    normal = { background = _btnTex, textColor = bear ? Color.black : Color.white },
+                    normal = { background = _btnTex, textColor = IsBear ? Color.black : Color.white },
                     hover = { background = _hoverTex, textColor = Color.black },
                     active = { background = _hoverTex, textColor = Color.black },
-                    focused = { background = _btnTex, textColor = bear ? Color.black : Color.white },
+                    focused = { background = _btnTex, textColor = IsBear ? Color.black : Color.white },
                     fontStyle = FontStyle.Bold,
                     fontSize = 11,
                     alignment = TextAnchor.MiddleCenter,
@@ -2550,9 +2756,9 @@ namespace RadioMod.Client
 
                 NumberField = new GUIStyle(GUI.skin.textField)
                 {
-                    normal = { background = _panelTex, textColor = bear ? SignalBright : AccentBright },
-                    focused = { background = _borderTex, textColor = bear ? SignalBright : AccentBright },
-                    hover = { background = _panelTex, textColor = bear ? SignalBright : AccentBright },
+                    normal = { background = _panelTex, textColor = IsBear ? SignalBright : AccentBright },
+                    focused = { background = _borderTex, textColor = IsBear ? SignalBright : AccentBright },
+                    hover = { background = _panelTex, textColor = IsBear ? SignalBright : AccentBright },
                     alignment = TextAnchor.MiddleCenter,
                     fontStyle = FontStyle.Bold,
                     fontSize = 11,
@@ -2574,7 +2780,7 @@ namespace RadioMod.Client
                 // Inset instrument readout used for the selected day.
                 ValueLabel = new GUIStyle(GUI.skin.label)
                 {
-                    normal = { background = _panelTex, textColor = bear ? SignalBright : AccentBright },
+                    normal = { background = _panelTex, textColor = IsBear ? SignalBright : AccentBright },
                     alignment = TextAnchor.MiddleCenter,
                     fontStyle = FontStyle.Bold,
                     fontSize = 11,
@@ -2606,14 +2812,14 @@ namespace RadioMod.Client
 
                 CallsignLabel = new GUIStyle(GUI.skin.label)
                 {
-                    normal = { textColor = bear ? TextMuted : Accent },
+                    normal = { textColor = IsBear ? TextMuted : Accent },
                     fontSize = 11,
                     alignment = TextAnchor.MiddleRight,
                 };
 
                 ClockLabel = new GUIStyle(GUI.skin.label)
                 {
-                    normal = { textColor = bear ? SignalBright : AccentBright },
+                    normal = { textColor = IsBear ? SignalBright : AccentBright },
                     fontSize = 12,
                     fontStyle = FontStyle.Bold,
                     alignment = TextAnchor.MiddleRight,
@@ -2662,6 +2868,39 @@ namespace RadioMod.Client
 
                 _scrollbarStyle = scrollbar;
                 _scrollbarThumbStyle = thumb;
+
+                if (instrument)
+                {
+                    ApplyTokenFont();
+                }
+            }
+
+            /// <summary>
+            /// Instrument only. Classic is never handed the token font — that is the rule that keeps
+            /// the frozen look impossible to break by editing a token.
+            /// </summary>
+            private static void ApplyTokenFont()
+            {
+                GUIStyle[] all =
+                {
+                    Window, SectionLabel, Button, ButtonOff, BodyLabel, DimLabel, PlayingLabel,
+                    NumberField, TagLabel, WrapLabel, ScrollView, CallsignLabel, ClockLabel,
+                    GlyphButton, Field, ValueLabel, UnitLabel,
+                };
+
+                foreach (GUIStyle style in all)
+                {
+                    if (style == null)
+                    {
+                        continue;
+                    }
+
+                    // Styles that ask for bold get the real bold cut when the game ships one;
+                    // synthesised bold is muddy at 9–11px, which is most of this interface.
+                    style.font = style.fontStyle == FontStyle.Bold && UiTokens.FontBold != null
+                        ? UiTokens.FontBold
+                        : UiTokens.Font;
+                }
             }
 
             private static GUIStyle _scrollbarStyle;
@@ -2817,7 +3056,7 @@ namespace RadioMod.Client
                 return;
             }
 
-            MilStyle.ApplyTheme(ResolveThemeIsBear());
+            MilStyle.ApplyTheme(ResolveTheme());
 
             if (_raidReviewWindowRect.x < 0f)
             {
@@ -2849,10 +3088,16 @@ namespace RadioMod.Client
 
             Color prevGuiColor = GUI.color;
 
-            GUI.color = new Color(0f, 0f, 0f, 0.55f * fade);
-            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            GUI.Button(new Rect(0f, 0f, Screen.width, Screen.height), "", GUIStyle.none);
+            // Take over input for as long as the window is up. Releasing it is handled from Update,
+            // not from here, so a throw further down cannot strand the player without a cursor.
+            WindowModality.Open();
+
+            if (WindowModality.DrawBlocker(_raidReviewWindowRect, 0.55f * fade))
+            {
+                CloseRaidReviewBrowser();
+                GUI.color = prevGuiColor;
+                return;
+            }
 
             Matrix4x4 prevMatrix = GUI.matrix;
             if (scale < 1f)
@@ -2866,6 +3111,15 @@ namespace RadioMod.Client
             _raidReviewWindowRect = GUILayout.Window(984612, _raidReviewWindowRect, DrawRaidReviewWindowContents, "", MilStyle.Window);
             GUI.matrix = prevMatrix;
             GUI.color = prevGuiColor;
+        }
+
+        /// <summary>Single close path, so every caller leaves the same state behind.</summary>
+        private void CloseRaidReviewBrowser()
+        {
+            _showRaidReviewBrowser = false;
+            _raidReviewOpenTime = 0f;
+            StopRaidReviewPlayback();
+            WindowModality.Close();
         }
 
         private const float PlaybackVolumeMaxPercent = 500f;
@@ -2951,19 +3205,19 @@ namespace RadioMod.Client
             GUILayout.BeginHorizontal();
 
             GUI.enabled = hasList && _raidReviewCurrentIndex > 0;
-            if (GUILayout.Button("▮◀", MilStyle.GlyphButton, GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (TransportButton(TransportGlyph.ToStart))
             {
                 PlayRaidReviewIndex(_raidReviewCurrentIndex - 1);
             }
 
             GUI.enabled = hasClip;
-            if (GUILayout.Button("◀◀", MilStyle.GlyphButton, GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (TransportButton(TransportGlyph.Back))
             {
                 SeekRaidReviewBy(-5f);
             }
 
             GUI.enabled = hasClip || hasList;
-            if (GUILayout.Button(_raidReviewPaused || !hasClip ? "▶" : "▮▮", MilStyle.GlyphButton, GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (TransportButton(_raidReviewPaused || !hasClip ? TransportGlyph.Play : TransportGlyph.Pause))
             {
                 if (hasClip)
                 {
@@ -2976,18 +3230,18 @@ namespace RadioMod.Client
             }
 
             GUI.enabled = hasClip;
-            if (GUILayout.Button("■", MilStyle.GlyphButton, GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (TransportButton(TransportGlyph.Stop))
             {
                 StopRaidReviewPlayback();
             }
 
-            if (GUILayout.Button("▶▶", MilStyle.GlyphButton, GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (TransportButton(TransportGlyph.Forward))
             {
                 SeekRaidReviewBy(5f);
             }
 
             GUI.enabled = hasList && _raidReviewCurrentIndex >= 0 && _raidReviewCurrentIndex < _raidReviewClips.Length - 1;
-            if (GUILayout.Button("▶▮", MilStyle.GlyphButton, GUILayout.Width(34f), GUILayout.Height(22f)))
+            if (TransportButton(TransportGlyph.ToEnd))
             {
                 PlayRaidReviewIndex(_raidReviewCurrentIndex + 1);
             }
@@ -3126,14 +3380,6 @@ namespace RadioMod.Client
         /// character's faction. USEC gets the UNTAR console; BEAR (and anything unknown,
         /// including SCAV runs) gets the Russian Armed Forces terminal.
         /// </summary>
-        private bool ResolveThemeIsBear()
-        {
-            if (_uiTheme.Value == UiTheme.BEAR) { return true; }
-            if (_uiTheme.Value == UiTheme.USEC) { return false; }
-
-            TryGetLocalIdentity(out _, out EPlayerSide? side);
-            return side != EPlayerSide.Usec;
-        }
 
         private string _cachedCallsignLabelKey;
         private string _cachedCallsignLabel;
@@ -3285,7 +3531,14 @@ namespace RadioMod.Client
             string onlineWord = L("АРХИВ ОНЛАЙН", "ARCHIVE ONLINE", "ARCHIV ONLINE", "ARCHIVO EN LÍNEA",
                 "ARCHIVE EN LIGNE", "ARCHIWUM ONLINE", "ARCHIVIO ONLINE", "ARCHIV ONLINE");
 
-            if (MilStyle.IsBear)
+            if (UiStyleState.IsInstrument)
+            {
+                // One plate for both factions: spaced title, quiet subtitle, clock hard right.
+                // The mock-up reads as a single instrument rather than as two different documents
+                // depending on which side the player happens to be on.
+                DrawInstrumentHeader(headerRect);
+            }
+            else if (MilStyle.IsBear)
             {
                 // Dense stencil plate: red star, hard letterspacing, blinking readiness lamp.
                 GUI.Label(new Rect(10f, 4f, headerRect.width - 20f, 20f),
@@ -3319,7 +3572,17 @@ namespace RadioMod.Client
             }
 
             // Maximise toggle sits above DragWindow so the click reaches the button, not the drag.
-            Rect maxButtonRect = new Rect(headerRect.width - 26f, 6f, 20f, 18f);
+            // Close sits left of maximise, both above DragWindow so the click reaches the button.
+            // The footer keeps its own Close as well: the header pair is chrome, the footer one is
+            // the obvious target for someone who has just finished reading the list.
+            Rect closeButtonRect = new Rect(headerRect.width - 26f, 6f, 20f, 18f);
+            if (GUI.Button(closeButtonRect, "✕", MilStyle.GlyphButton))
+            {
+                CloseRaidReviewBrowser();
+                return;
+            }
+
+            Rect maxButtonRect = new Rect(headerRect.width - 50f, 6f, 20f, 18f);
             if (GUI.Button(maxButtonRect, _raidReviewMaximized ? "▭" : "▣", MilStyle.GlyphButton))
             {
                 ToggleRaidReviewMaximized();
@@ -3328,6 +3591,17 @@ namespace RadioMod.Client
             GUI.DragWindow(headerRect);
 
             GUILayout.Space(headerHeight + 6f);
+
+            DrawRaidReviewTabBar();
+
+            // Early return rather than wrapping the log in a branch: the recordings body below is
+            // unchanged code, and re-indenting two hundred lines would hide the real diff.
+            if (_raidReviewTab != RaidReviewTab.Recordings)
+            {
+                DrawRaidReviewSecondaryTab();
+                DrawRaidReviewFooter(fullRect);
+                return;
+            }
 
             GUILayout.Label(L("СПИСОК ЗАПИСЕЙ", "RECORDING LOG", "AUFZEICHNUNGSLISTE", "REGISTRO DE GRABACIONES",
                 "JOURNAL D'ENREGISTREMENT", "DZIENNIK NAGRAŃ", "REGISTRO REGISTRAZIONI", "SEZNAM NAHRÁVEK"), MilStyle.SectionLabel);
@@ -3428,6 +3702,14 @@ namespace RadioMod.Client
             string delLabel = L("УДЛ", "DEL", "LÖS", "BOR", "SUPP", "USUŃ", "ELIM", "SMAZ");
             string sureLabel = L("ДА?", "SURE?", "OK?", "¿OK?", "SÛR ?", "NA PEWNO?", "OK?", "JISTĚ?");
 
+            DrawLocationBar();
+
+            // Column header, so the alignment below reads as a table rather than as coincidence.
+            if (UiStyleState.IsInstrument)
+            {
+                DrawJournalHeader(GUILayoutUtility.GetRect(10f, 14f, GUILayout.ExpandWidth(true)));
+            }
+
             MilStyle.PushScrollbarSkin();
             _raidReviewScroll = GUILayout.BeginScrollView(_raidReviewScroll, MilStyle.ScrollView);
 
@@ -3492,7 +3774,15 @@ namespace RadioMod.Client
 
                     const float actionsWidth = 152f;
                     Rect textRect = new Rect(textX, animRowRect.y, Mathf.Max(10f, animRowRect.width - actionsWidth - (textX - animRowRect.x)), animRowRect.height);
-                    GUI.Label(textRect, clip.DisplayLabel, isPlaying ? MilStyle.PlayingLabel : MilStyle.BodyLabel);
+
+                    if (UiStyleState.IsInstrument)
+                    {
+                        DrawJournalColumns(textRect, clip, isPlaying);
+                    }
+                    else
+                    {
+                        GUI.Label(textRect, clip.DisplayLabel, isPlaying ? MilStyle.PlayingLabel : MilStyle.BodyLabel);
+                    }
 
                     float bx = animRowRect.xMax - actionsWidth + 4f;
                     float by = animRowRect.y + 3f;
@@ -3535,16 +3825,7 @@ namespace RadioMod.Client
             GUILayout.EndScrollView();
             MilStyle.PopScrollbarSkin();
 
-            GUILayout.Space(6f);
-            if (GUILayout.Button(L("Закрыть", "Close", "Schließen", "Cerrar", "Fermer", "Zamknij", "Chiudi", "Zavřít").ToUpperInvariant(),
-                MilStyle.Button, GUILayout.Height(24f)))
-            {
-                _showRaidReviewBrowser = false;
-                _raidReviewOpenTime = 0f;
-                StopRaidReviewPlayback();
-            }
-
-            DrawResizeGripVisual(fullRect);
+            DrawRaidReviewFooter(fullRect);
         }
 
         private const float RaidReviewGripSize = 13f;
@@ -3555,13 +3836,23 @@ namespace RadioMod.Client
             float baseY = windowRect.yMax - RaidReviewGripSize;
 
             Color prev = GUI.color;
-            GUI.color = MilStyle.Accent;
-            int size = (int)RaidReviewGripSize;
-            for (int i = 0; i < size; i++)
+
+            // Three stepped bars rather than a solid wedge: the wedge read as a filled corner and
+            // gave no hint that it was draggable. Widths and offsets are the mock-up geometry
+            // (12/8/4 px wide, 2 px tall, 4 px apart), scaled to whatever grip size is in force.
+            GUI.color = new Color(MilStyle.Signal.r, MilStyle.Signal.g, MilStyle.Signal.b, 0.65f);
+
+            float u = RaidReviewGripSize / 16f;
+            float thick = Mathf.Max(1f, Mathf.Round(2f * u));
+            float right = baseX + RaidReviewGripSize - Mathf.Round(2f * u);
+
+            for (int i = 0; i < 3; i++)
             {
-                float w = size - i;
-                GUI.DrawTexture(new Rect(baseX + i, baseY + size - 1 - i, w, 1f), Texture2D.whiteTexture);
+                float w = Mathf.Round((12f - i * 4f) * u);
+                float y = baseY + RaidReviewGripSize - Mathf.Round((2f + i * 4f) * u) - thick;
+                GUI.DrawTexture(new Rect(right - w, y, w, thick), Texture2D.whiteTexture);
             }
+
             GUI.color = prev;
         }
 
@@ -3626,7 +3917,8 @@ namespace RadioMod.Client
         /// Visual treatment of the notification panel. Independent of the BEAR/USEC theme, which
         /// controls colours — this controls how much chrome is drawn around the message.
         /// </summary>
-        private enum NotificationStyle { Themed, ThemedCompact, Minimal, MinimalCompact }
+        // Strip / StripCompact / Plate are Instrument-only; the first four are the frozen Classic set.
+        private enum NotificationStyle { Themed, ThemedCompact, Minimal, MinimalCompact, Strip, StripCompact, Plate }
 
         private ConfigEntry<NotificationStyle> _notificationStyleMode;
         private ConfigEntry<float> _notificationOpacity;
@@ -3638,6 +3930,9 @@ namespace RadioMod.Client
             public Color Color;
             public float StartTime;
             public float ExpireTime;
+
+            /// <summary>Own lifetime, so the remaining-time bar is drawn against the right scale.</summary>
+            public float Duration;
         }
 
         private const float NotificationDurationSeconds = 2.5f;
@@ -3708,7 +4003,8 @@ namespace RadioMod.Client
         /// Queues a notification. <paramref name="overrideColor"/> exists so events that already
         /// have a user-configurable colour in F12 keep honouring it; the kind still decides the tag.
         /// </summary>
-        private void Notify(string message, NotifyKind kind = NotifyKind.Info, Color? overrideColor = null)
+        private void Notify(string message, NotifyKind kind = NotifyKind.Info, Color? overrideColor = null,
+            float? durationSeconds = null)
         {
             LogVerbose("PRT: notification shown");
             if (!_showNotifications.Value)
@@ -3723,7 +4019,8 @@ namespace RadioMod.Client
                 Kind = kind,
                 Color = overrideColor ?? DefaultNotifyColor(kind),
                 StartTime = now,
-                ExpireTime = now + NotificationDurationSeconds
+                Duration = durationSeconds ?? NotificationDurationSeconds,
+                ExpireTime = now + (durationSeconds ?? NotificationDurationSeconds)
             });
 
             // Keep the stack shallow: older entries are dropped rather than pushed off-screen.
@@ -3862,6 +4159,31 @@ namespace RadioMod.Client
         /// any mod that adds battery slots holding resource items will light this up, and with no
         /// such mod the radio simply has no slots and reports <see cref="BatteryPowerState.NoSlots"/>.
         /// </summary>
+        /// <summary>
+        /// Nominal terminal voltage of one cell, by template. Only the three chemistries a radio can
+        /// actually take are listed; anything else falls back to 1.5 V rather than reporting zero,
+        /// since an unknown cell is far more likely to be an alkaline than to be no cell at all.
+        /// </summary>
+        private static float NominalCellVolts(string tpl)
+        {
+            switch (tpl)
+            {
+                case "590a358486f77429692b2790": return 3.0f;  // CR123A
+                case "5672cb304bdc2dc2088b456a": return 3.0f;  // CR2032
+                case "5672cb124bdc2d1a0f8b4568": return 1.5f;  // AA
+                default: return 1.5f;
+            }
+        }
+
+        /// <summary>
+        /// Nominal pack voltage of the active radio, cells assumed in series — which is how a
+        /// multi-cell handheld is actually wired. Cached from the last battery poll so the readout
+        /// does not have to walk the slots again on every frame.
+        /// </summary>
+        private float _batteryPackVolts;
+
+        internal float BatteryPackVolts => _batteryPackVolts;
+
         private BatteryPowerState GetRadioBatteryState(out float fraction)
         {
             fraction = 0f;
@@ -3880,6 +4202,7 @@ namespace RadioMod.Client
                 float max = 0f;
                 int batterySlots = 0;
                 int emptySlots = 0;
+                float packVolts = 0f;
 
                 foreach (Slot slot in radio.Slots)
                 {
@@ -3902,6 +4225,8 @@ namespace RadioMod.Client
                         value += resource.Value;
                         max += resource.MaxResource;
                     }
+
+                    packVolts += NominalCellVolts(cell.TemplateId);
                 }
 
                 if (batterySlots == 0)
@@ -3925,6 +4250,7 @@ namespace RadioMod.Client
                     return BatteryPowerState.Dead;
                 }
 
+                _batteryPackVolts = packVolts;
                 fraction = Mathf.Clamp01(value / max);
                 if (fraction <= 0f)
                 {
@@ -4284,837 +4610,6 @@ namespace RadioMod.Client
             return new Color(0.45f, 0.85f, 0.35f);
         }
 
-        /// <summary>Charge readout drawn just above the indicator row, in the selected style.</summary>
-        private void DrawBatteryIndicator(float rightEdge, float bottomY, float fraction)
-        {
-            if (_batteryLabelStyle == null)
-            {
-                _batteryLabelStyle = new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.MiddleCenter,
-                    fontSize = 10,
-                    fontStyle = FontStyle.Bold,
-                    wordWrap = false,
-                };
-            }
-
-            float opacity = IndicatorAlpha();
-            Color charge = BatteryChargeColor(fraction);
-            Color prev = GUI.color;
-
-            BatteryIndicatorStyle style = _batteryIndicatorStyle.Value;
-            bool showCell = style == BatteryIndicatorStyle.Cell || style == BatteryIndicatorStyle.CellAndPercent;
-            bool showBar = style == BatteryIndicatorStyle.Bar || style == BatteryIndicatorStyle.BarAndPercent;
-            bool showPercent = style == BatteryIndicatorStyle.Percent
-                || style == BatteryIndicatorStyle.CellAndPercent
-                || style == BatteryIndicatorStyle.BarAndPercent;
-
-            float x = rightEdge;
-
-            if (showPercent)
-            {
-                // Inset readout with a charge-coloured spine and a fill that tracks the level,
-                // so the number reads as an instrument rather than plain text on the HUD.
-                const float labelWidth = 44f;
-                const float labelHeight = 15f;
-                x -= labelWidth;
-                Rect box = new Rect(x, bottomY - labelHeight - 1f, labelWidth, labelHeight);
-
-                GUI.color = new Color(MilStyle.Bg.r, MilStyle.Bg.g, MilStyle.Bg.b, 0.85f * opacity);
-                GUI.DrawTexture(box, Texture2D.whiteTexture);
-
-                GUI.color = new Color(charge.r, charge.g, charge.b, 0.16f * opacity);
-                GUI.DrawTexture(new Rect(box.x, box.y, box.width * Mathf.Clamp01(fraction), box.height), Texture2D.whiteTexture);
-
-                // Full frame, not just a left spine — the open right edge was what looked unfinished.
-                GUI.color = new Color(charge.r, charge.g, charge.b, opacity);
-                GUI.DrawTexture(new Rect(box.x, box.y, 2f, box.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.xMax - 1f, box.y, 1f, box.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.x, box.y, box.width, 1f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.x, box.yMax - 1f, box.width, 1f), Texture2D.whiteTexture);
-
-                _batteryLabelStyle.normal.textColor = new Color(charge.r, charge.g, charge.b, opacity);
-                GUI.Label(box, Mathf.RoundToInt(fraction * 100f) + "%", _batteryLabelStyle);
-
-                x -= 5f;
-            }
-
-            if (showCell)
-            {
-                const float w = 26f;
-                const float h = 12f;
-                const int cells = 4;
-                x -= w + 3f;
-                Rect body = new Rect(x, bottomY - h - 1f, w, h);
-
-                // Contact nub on the right, then the shell, then the charge segments.
-                GUI.color = new Color(MilStyle.Border.r, MilStyle.Border.g, MilStyle.Border.b, opacity);
-                GUI.DrawTexture(new Rect(body.xMax + 1f, body.y + 3f, 2f, h - 6f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(body.x, body.y, body.width, 1f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(body.x, body.yMax - 1f, body.width, 1f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(body.x, body.y, 1f, body.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(body.xMax - 1f, body.y, 1f, body.height), Texture2D.whiteTexture);
-
-                float inner = body.width - 4f;
-                float cellW = (inner - (cells - 1)) / cells;
-                float lit = fraction * cells;
-
-                for (int i = 0; i < cells; i++)
-                {
-                    float fill = Mathf.Clamp01(lit - i);
-                    if (fill <= 0f)
-                    {
-                        continue;
-                    }
-
-                    GUI.color = new Color(charge.r, charge.g, charge.b, opacity * (0.45f + 0.55f * fill));
-                    GUI.DrawTexture(new Rect(body.x + 2f + i * (cellW + 1f), body.y + 2f, cellW * fill, body.height - 4f), Texture2D.whiteTexture);
-                }
-            }
-
-            if (showBar)
-            {
-                const float w = 44f;
-                const float h = 5f;
-                const int cells = 8;
-                x -= w;
-                Rect bar = new Rect(x, bottomY - h - 4f, w, h);
-
-                GUI.color = new Color(MilStyle.Bg.r, MilStyle.Bg.g, MilStyle.Bg.b, 0.8f * opacity);
-                GUI.DrawTexture(new Rect(bar.x - 1f, bar.y - 1f, bar.width + 2f, bar.height + 2f), Texture2D.whiteTexture);
-
-                float cellW = (w - (cells - 1)) / cells;
-                float lit = fraction * cells;
-
-                for (int i = 0; i < cells; i++)
-                {
-                    float fill = Mathf.Clamp01(lit - i);
-                    GUI.color = fill > 0f
-                        ? new Color(charge.r, charge.g, charge.b, opacity * (0.4f + 0.6f * fill))
-                        : new Color(MilStyle.Border.r, MilStyle.Border.g, MilStyle.Border.b, 0.5f * opacity);
-                    GUI.DrawTexture(new Rect(bar.x + i * (cellW + 1f), bar.y, cellW, bar.height), Texture2D.whiteTexture);
-                }
-            }
-
-            GUI.color = prev;
-        }
-
-        private GUIStyle _batteryLabelStyle;
-
-        private void DrawDot(Texture2D dot, float x, float y, float diameter, Color color)
-        {
-            float opacity = IndicatorAlpha();
-            color.a *= opacity;
-
-
-            if (IndicatorLampsAreRound())
-            {
-                GUI.color = color;
-                GUI.DrawTexture(new Rect(x, y, diameter, diameter), dot);
-                return;
-            }
-
-            // Angular segment: a filled core inside a darker frame, matching the panel language
-            // used by the recordings window and the notification chassis.
-            Rect cell = new Rect(x, y + 1f, diameter, diameter - 2f);
-
-            GUI.color = new Color(MilStyle.Bg.r, MilStyle.Bg.g, MilStyle.Bg.b, 0.75f * opacity);
-            GUI.DrawTexture(new Rect(cell.x - 1f, cell.y - 1f, cell.width + 2f, cell.height + 2f), Texture2D.whiteTexture);
-
-            GUI.color = color;
-            GUI.DrawTexture(cell, Texture2D.whiteTexture);
-        }
-
-        private bool TryGetBestSignalQuality(out float quality)
-        {
-            quality = 1f;
-            bool found = false;
-
-            foreach (string name in RadioSpeakerNames)
-            {
-                if (!_lastMode.TryGetValue(name, out RadioVoiceFilter.Mode mode) || mode == RadioVoiceFilter.Mode.Silent)
-                {
-                    continue;
-                }
-
-                float ratio = _lastRatio.TryGetValue(name, out float r) ? r : 1f;
-                if (!found || ratio < quality)
-                {
-                    quality = ratio;
-                    found = true;
-                }
-            }
-
-            return found;
-        }
-
-        private static bool IsEscMenuOpen()
-        {
-            try
-            {
-                EFT.UI.Screens.IBaseScreenController<EEftScreenType> controller = EFT.UI.Screens.EftScreenManager.Instance?.CurrentBaseScreenController;
-                return controller != null && controller.ScreenType == EEftScreenType.Settings;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private float _lastIndicatorActivityTime;
-        private float _tuningSweepStartTime;
-
-        private float IndicatorAlpha()
-        {
-            return _indicatorOpacity.Value * GetIndicatorFade();
-        }
-
-        /// <summary>
-        /// Cosmetic dial sweep played when the active radio changes: a tick scale slides past a
-        /// fixed centre needle and settles, the way a real set looks while being tuned.
-        /// </summary>
-        private void DrawTuningSweep()
-        {
-            if (!_showTuningSweep.Value || _tuningSweepStartTime <= 0f)
-            {
-                return;
-            }
-
-            const float duration = 0.7f;
-            float t = (Time.unscaledTime - _tuningSweepStartTime) / duration;
-            if (t >= 1f)
-            {
-                _tuningSweepStartTime = 0f;
-                return;
-            }
-
-            // Ease-out: fast sweep that settles onto the new frequency.
-            float eased = 1f - Mathf.Pow(1f - t, 3f);
-            float alpha = Mathf.Sin(t * Mathf.PI) * _indicatorOpacity.Value;
-
-            const float w = 190f;
-            const float h = 26f;
-            Rect area = new Rect((Screen.width - w) / 2f, Screen.height * 0.62f, w, h);
-
-            // The sweep is an overlay like the notifications, so it follows the notification
-            // theme rather than the recordings-window theme.
-            MilStyle.Palette pal = _notificationTheme.Value == NotificationTheme.FollowWindow
-                ? MilStyle.GetPalette(MilStyle.IsBear)
-                : MilStyle.GetPalette(_notificationTheme.Value == NotificationTheme.BEAR);
-
-            Color prev = GUI.color;
-
-            GUI.color = new Color(pal.Bg.r, pal.Bg.g, pal.Bg.b, 0.8f * alpha);
-            GUI.DrawTexture(area, Texture2D.whiteTexture);
-            GUI.color = new Color(pal.Border.r, pal.Border.g, pal.Border.b, 0.9f * alpha);
-            GUI.DrawTexture(new Rect(area.x, area.y, area.width, 1f), Texture2D.whiteTexture);
-            GUI.DrawTexture(new Rect(area.x, area.yMax - 1f, area.width, 1f), Texture2D.whiteTexture);
-
-            // Scale ticks scrolling past; offset eases to a stop.
-            float offset = (1f - eased) * 120f;
-            GUI.BeginGroup(area);
-            for (int i = -14; i < 28; i++)
-            {
-                float x = i * 9f - Mathf.Repeat(offset, 9f) + area.width / 2f - 60f;
-                if (x < 0f || x > area.width)
-                {
-                    continue;
-                }
-
-                bool major = i % 5 == 0;
-                float tickH = major ? h * 0.5f : h * 0.28f;
-                GUI.color = new Color(pal.Accent.r, pal.Accent.g, pal.Accent.b, (major ? 0.75f : 0.4f) * alpha);
-                GUI.DrawTexture(new Rect(x, (h - tickH) / 2f, 1f, tickH), Texture2D.whiteTexture);
-            }
-            GUI.EndGroup();
-
-            // Fixed centre needle.
-            GUI.color = new Color(pal.SignalBright.r, pal.SignalBright.g, pal.SignalBright.b, alpha);
-            GUI.DrawTexture(new Rect(area.center.x - 1f, area.y - 3f, 2f, area.height + 6f), Texture2D.whiteTexture);
-
-            GUI.color = prev;
-        }
-
-        /// <summary>
-        /// Indicators sit at full brightness during activity and ease down to a dim resting level
-        /// after a few quiet seconds, so they stop competing with the game during downtime.
-        /// </summary>
-        private float GetIndicatorFade()
-        {
-            if (!_fadeIdleIndicators.Value)
-            {
-                return 1f;
-            }
-
-            const float holdSeconds = 3f;
-            const float fadeSeconds = 1.5f;
-            const float restingLevel = 0.35f;
-
-            float idle = Time.unscaledTime - _lastIndicatorActivityTime - holdSeconds;
-            if (idle <= 0f)
-            {
-                return 1f;
-            }
-
-            return Mathf.Lerp(1f, restingLevel, Mathf.Clamp01(idle / fadeSeconds));
-        }
-
-        /// <summary>
-        /// Topmost Y reached by the indicator stack this frame, in the indicators' own unscaled
-        /// local coordinates (i.e. before <see cref="_indicatorScale"/> is applied). Screen.height
-        /// (bottom of screen) when nothing was drawn. DrawNotification reads this — converted to
-        /// real screen pixels via the indicator scale, then back into its own local space via the
-        /// notification scale — so the two stacks never draw on top of each other regardless of how
-        /// differently they're scaled.
-        /// </summary>
-        private float _indicatorStackTopY = float.MaxValue;
-
-        private void DrawIndicators()
-        {
-            _indicatorStackTopY = Screen.height;
-
-            if (_radioLocation != RadioLocation.Ready || IsEscMenuOpen())
-            {
-                return;
-            }
-
-            const float diameter = 10f;
-            const float spacing = 18f;
-            const float rowGap = 6f;
-            const float marginRight = 20f;
-            const float marginBottom = 36f;
-
-            bool showPower = _showPowerIndicator.Value;
-
-            bool showDuplex = _showDuplexIndicator.Value && _radioOn;
-            bool showTalking = _showTalkingIndicator.Value && _txChannel != null;
-            bool channelBusy = RadioSpeakerNames.Count > 0;
-            bool showBusy = _showBusyIndicator.Value && channelBusy;
-            float quality = 1f;
-            bool showSignal = _showSignalIndicator.Value && channelBusy && TryGetBestSignalQuality(out quality);
-
-            // Any traffic counts as activity and resets the idle timer.
-            if (showTalking || channelBusy)
-            {
-                _lastIndicatorActivityTime = Time.unscaledTime;
-            }
-
-            bool talkingAndBusyBoth = showTalking && showBusy;
-            int talkBusySlots = talkingAndBusyBoth ? 2 : (showTalking || showBusy ? 1 : 0);
-
-            int rowCount = talkBusySlots + (showDuplex ? 1 : 0) + (showPower ? 1 : 0);
-            if (rowCount == 0 && !showSignal)
-            {
-                return;
-            }
-
-            Texture2D dot = GetIndicatorDotTexture();
-            Color prevGuiColor = GUI.color;
-
-            float rightEdge = Screen.width - marginRight;
-            float rowY = Screen.height - marginBottom - diameter;
-
-            // In Badges mode the lamp row is suppressed; the labelled meters carry the state.
-            if (rowCount > 0 && IndicatorLampsVisible())
-            {
-                float rowWidth = (rowCount - 1) * spacing + diameter;
-                float x = rightEdge - rowWidth;
-
-                if (talkingAndBusyBoth)
-                {
-                    DrawDot(dot, x, rowY, diameter, _colorTalking.Value);
-                    x += spacing;
-                    DrawDot(dot, x, rowY, diameter, _colorBusy.Value);
-                    x += spacing;
-                }
-                else if (showTalking)
-                {
-                    DrawDot(dot, x, rowY, diameter, _colorTalking.Value);
-                    x += spacing;
-                }
-                else if (showBusy)
-                {
-                    DrawDot(dot, x, rowY, diameter, _colorBusy.Value);
-                    x += spacing;
-                }
-
-                if (showDuplex)
-                {
-                    Color duplexColor = _duplexMode == DuplexMode.Simplex ? _colorSimplex.Value : new Color(0.85f, 0.85f, 0.85f);
-                    DrawDot(dot, x, rowY, diameter, duplexColor);
-                    x += spacing;
-                }
-
-                if (showPower)
-                {
-                    DrawDot(dot, x, rowY, diameter, _radioOn ? _colorOn.Value : new Color(0.5f, 0.5f, 0.5f));
-                }
-            }
-
-            // Battery sits directly above the lamp row, below any audio badges.
-            float batteryTop = rowY - rowGap - (showSignal ? 14f : 0f);
-            float topY = rowY;
-            if (_showBatteryIndicator.Value && _radioOn && TryGetRadioBatteryCharge(out float batteryFraction))
-            {
-                DrawBatteryIndicator(rightEdge, batteryTop, batteryFraction);
-                topY = batteryTop;
-                batteryTop -= 18f;
-            }
-
-            if (IndicatorBadgesVisible())
-            {
-                float badgeY = batteryTop;
-
-                if (showTalking)
-                {
-                    DrawAudioBadge(rightEdge, badgeY,
-                        L("ПЕРЕДАЧА", "ON AIR", "SENDEN", "EMISIÓN", "ÉMISSION", "NADAJE", "IN ONDA", "VYSÍLÁM"),
-                        _colorTalking.Value, _txBands, _localMicRecorder.InputLevel);
-                    topY = badgeY;
-                    badgeY -= 20f;
-                }
-
-                if (showBusy)
-                {
-                    DrawAudioBadge(rightEdge, badgeY,
-                        L("ПРИЁМ", "RECEIVING", "EMPFANG", "RECEPCIÓN", "RÉCEPTION", "ODBIÓR", "RICEZIONE", "PŘÍJEM"),
-                        _colorBusy.Value, _rxBands, GetLoudestRemoteLevel());
-                    topY = badgeY;
-                }
-            }
-
-            if (showSignal)
-            {
-
-                float fill = Mathf.Clamp01(1f - quality);
-
-                if (_signalIndicatorStyle.Value == SignalIndicatorStyle.AntennaBars)
-                {
-                    DrawSignalAntennaBars(rightEdge, rowY, rowGap, fill);
-                }
-                else
-                {
-                    DrawSignalFillBar(rightEdge, rowY, rowGap, fill);
-                }
-            }
-
-            // Badge/battery labels sit a bit above their anchor point rather than exactly on it —
-            // pad the reserved area so notifications clear the actual glyphs, not just the anchors.
-            _indicatorStackTopY = topY - 20f;
-
-            GUI.color = prevGuiColor;
-        }
-
-        private const int VuBandCount = 5;
-        private readonly float[] _txBands = new float[VuBandCount];
-        private readonly float[] _rxBands = new float[VuBandCount];
-        private GUIStyle _transmitBadgeStyle;
-
-        /// <summary>
-        /// Drives a bank of level bars from a real audio level. Bands sit at rising thresholds so
-        /// quiet speech lights only the first ones and loud speech pushes the whole bank up, the way
-        /// a hardware VU meter behaves. Each band falls back gradually instead of snapping to zero.
-        /// </summary>
-        private static void UpdateVuBands(float[] bands, float level)
-        {
-            float fallPerSecond = 2.4f * Time.unscaledDeltaTime;
-
-            for (int i = 0; i < bands.Length; i++)
-            {
-                // Later bands need progressively more signal before they light up.
-                float threshold = i / (float)bands.Length;
-                float target = Mathf.InverseLerp(threshold, threshold + 0.35f, level);
-
-                bands[i] = target > bands[i]
-                    ? target
-                    : Mathf.Max(target, bands[i] - fallPerSecond);
-            }
-        }
-
-        private float GetLoudestRemoteLevel()
-        {
-            float loudest = 0f;
-            foreach (string name in RadioSpeakerNames)
-            {
-                if (_radioFilters.TryGetValue(name, out RadioVoiceFilter filter) && filter != null && filter.OutputLevel > loudest)
-                {
-                    loudest = filter.OutputLevel;
-                }
-            }
-
-            return loudest;
-        }
-
-        /// <summary>
-        /// Live "on air" / "receiving" badge: a chassis with a level meter driven by the actual
-        /// audio, so your own transmission is never confused with incoming traffic.
-        /// </summary>
-        private void DrawAudioBadge(float rightEdge, float bottomY, string label, Color accent, float[] bands, float level)
-        {
-            if (_transmitBadgeStyle == null)
-            {
-                _transmitBadgeStyle = new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.MiddleLeft,
-                    fontSize = 10,
-                    fontStyle = FontStyle.Bold,
-                    wordWrap = false,
-                };
-            }
-
-            UpdateVuBands(bands, level);
-
-            const float badgeHeight = 17f;
-            const float meterWidth = 34f;
-            const float textPadding = 8f;
-
-            float opacity = IndicatorAlpha();
-
-            // Width follows the localised label so translations never get clipped.
-            _transmitBadgeStyle.fontSize = 10;
-            float labelWidth = _transmitBadgeStyle.CalcSize(new GUIContent(label)).x;
-            float badgeWidth = textPadding + labelWidth + 8f + meterWidth + 7f;
-
-            Rect badge = new Rect(rightEdge - badgeWidth, bottomY - badgeHeight, badgeWidth, badgeHeight);
-            Color prev = GUI.color;
-
-            GUI.color = new Color(MilStyle.Bg.r, MilStyle.Bg.g, MilStyle.Bg.b, 0.85f * opacity);
-            GUI.DrawTexture(badge, Texture2D.whiteTexture);
-
-            // Left edge brightens with the signal rather than pulsing on a timer.
-            GUI.color = new Color(accent.r, accent.g, accent.b, opacity * (0.4f + 0.6f * Mathf.Clamp01(level * 2f)));
-            GUI.DrawTexture(new Rect(badge.x, badge.y, 2f, badge.height), Texture2D.whiteTexture);
-
-            GUI.color = new Color(accent.r, accent.g, accent.b, 0.35f * opacity);
-            GUI.DrawTexture(new Rect(badge.x, badge.y, badge.width, 1f), Texture2D.whiteTexture);
-            GUI.DrawTexture(new Rect(badge.x, badge.yMax - 1f, badge.width, 1f), Texture2D.whiteTexture);
-
-            _transmitBadgeStyle.normal.textColor = new Color(accent.r, accent.g, accent.b, opacity);
-            GUI.Label(new Rect(badge.x + textPadding, badge.y, labelWidth + 2f, badge.height), label, _transmitBadgeStyle);
-
-            DrawVuMeter(new Rect(badge.xMax - meterWidth - 5f, badge.y + 3f, meterWidth, badge.height - 6f), bands, accent, opacity);
-
-            GUI.color = prev;
-        }
-
-        private static void DrawVuMeter(Rect area, float[] bands, Color accent, float opacity)
-        {
-            float slot = area.width / bands.Length;
-            float barWidth = Mathf.Max(2f, slot - 1.5f);
-
-            for (int i = 0; i < bands.Length; i++)
-            {
-                float value = Mathf.Clamp01(bands[i]);
-                float h = Mathf.Max(1f, value * area.height);
-                float bx = area.x + i * slot;
-
-                // Unlit remainder of the column, so the meter has visible headroom.
-                GUI.color = new Color(accent.r, accent.g, accent.b, 0.16f * opacity);
-                GUI.DrawTexture(new Rect(bx, area.y, barWidth, area.height), Texture2D.whiteTexture);
-
-                GUI.color = new Color(accent.r, accent.g, accent.b, opacity * (0.55f + 0.45f * value));
-                GUI.DrawTexture(new Rect(bx, area.yMax - h, barWidth, h), Texture2D.whiteTexture);
-            }
-        }
-
-        private void DrawSignalFillBar(float rightEdge, float rowY, float rowGap, float fill)
-        {
-            const float barWidth = 44f;
-            const float barHeight = 5f;
-            const int cells = 8;
-            const float cellGap = 1f;
-
-            float opacity = IndicatorAlpha();
-            float barY = rowY - barHeight - rowGap;
-            float barX = rightEdge - barWidth;
-
-            // Recessed track, so the meter reads as an instrument rather than a flat grey strip.
-            GUI.color = new Color(MilStyle.Bg.r, MilStyle.Bg.g, MilStyle.Bg.b, 0.8f * opacity);
-            GUI.DrawTexture(new Rect(barX - 1f, barY - 1f, barWidth + 2f, barHeight + 2f), Texture2D.whiteTexture);
-
-            Color fillColor = _colorSignalBar.Value;
-            float cellWidth = (barWidth - cellGap * (cells - 1)) / cells;
-            float litCells = Mathf.Clamp01(fill) * cells;
-
-            for (int i = 0; i < cells; i++)
-            {
-                float cellX = barX + i * (cellWidth + cellGap);
-                float lit = Mathf.Clamp01(litCells - i);
-
-                GUI.color = lit > 0f
-                    ? new Color(fillColor.r, fillColor.g, fillColor.b, fillColor.a * opacity * (0.4f + 0.6f * lit))
-                    : new Color(MilStyle.Border.r, MilStyle.Border.g, MilStyle.Border.b, 0.5f * opacity);
-
-                GUI.DrawTexture(new Rect(cellX, barY, cellWidth, barHeight), Texture2D.whiteTexture);
-            }
-        }
-
-        private static readonly float[] AntennaBarHeights = { 3f, 5f, 7f, 9f };
-
-        private void DrawSignalAntennaBars(float rightEdge, float rowY, float rowGap, float fill)
-        {
-            const float barWidth = 4f;
-            const float barGap = 2f;
-            int barCount = AntennaBarHeights.Length;
-            float totalWidth = barCount * barWidth + (barCount - 1) * barGap;
-            float baseline = rowY - rowGap;
-            float startX = rightEdge - totalWidth;
-
-            int filledCount = Mathf.CeilToInt(Mathf.Clamp01(fill) * barCount);
-
-            float opacity = IndicatorAlpha();
-            Color emptyColor = new Color(MilStyle.Border.r, MilStyle.Border.g, MilStyle.Border.b, 0.55f * opacity);
-            Color filledColor = _colorSignalBar.Value;
-            filledColor.a *= opacity;
-
-            for (int i = 0; i < barCount; i++)
-            {
-                float barHeight = AntennaBarHeights[i];
-                float barX = startX + i * (barWidth + barGap);
-                float barY = baseline - barHeight;
-                Rect bar = new Rect(barX, barY, barWidth, barHeight);
-
-                if (i < filledCount)
-                {
-                    // Soft halo under the lit bars so signal strength reads at a glance.
-                    GUI.color = new Color(filledColor.r, filledColor.g, filledColor.b, filledColor.a * 0.22f);
-                    GUI.DrawTexture(new Rect(bar.x - 1f, bar.y - 1f, bar.width + 2f, bar.height + 2f), Texture2D.whiteTexture);
-
-                    GUI.color = filledColor;
-                    GUI.DrawTexture(bar, Texture2D.whiteTexture);
-                    continue;
-                }
-
-                // Empty slots are drawn as outlines rather than solid grey blocks.
-                GUI.color = emptyColor;
-                GUI.DrawTexture(new Rect(bar.x, bar.yMax - 1f, bar.width, 1f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(bar.x, bar.y, 1f, bar.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(bar.xMax - 1f, bar.y, 1f, bar.height), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width, 1f), Texture2D.whiteTexture);
-            }
-        }
-
-        private void OnGUI()
-        {
-            // Indicators and notifications draw during a raid, where the recordings window never
-            // runs — so the theme has to be resolved here rather than inside that window.
-            MilStyle.ApplyTheme(ResolveThemeIsBear());
-
-            DrawRaidReviewBrowser();
-
-            if (GetLocalPlayer() == null)
-            {
-                return;
-            }
-
-            Matrix4x4 prevUiMatrix = GUI.matrix;
-
-            // Pivoted on the bottom-right corner, which is where every indicator/notification rect
-            // is anchored — scaling around the screen origin (0,0) instead would push them further
-            // from that corner as they grow and fly off-screen at anything above 1x.
-            Vector2 pivot = new Vector2(Screen.width, Screen.height);
-
-            if (Mathf.Abs(_indicatorScale.Value - 1f) > 0.001f)
-            {
-                GUIUtility.ScaleAroundPivot(new Vector2(_indicatorScale.Value, _indicatorScale.Value), pivot);
-            }
-
-            DrawIndicators();
-            DrawTuningSweep();
-
-            GUI.matrix = prevUiMatrix;
-
-            // How far up from the bottom-right corner, in real screen pixels, the indicator stack
-            // actually reaches once its own scale is applied — notifications use this to keep their
-            // own stack from starting below that point, so bumping either slider independently can
-            // never make the two overlap.
-            float indicatorRealClearance = (Screen.height - _indicatorStackTopY) * _indicatorScale.Value;
-
-            if (Mathf.Abs(_notificationScale.Value - 1f) > 0.001f)
-            {
-                GUIUtility.ScaleAroundPivot(new Vector2(_notificationScale.Value, _notificationScale.Value), pivot);
-            }
-
-            DrawNotification(indicatorRealClearance);
-
-            GUI.matrix = prevUiMatrix;
-        }
-
-        private const float NotificationBaseMarginBottom = 120f;
-        private const float NotificationIndicatorGap = 12f;
-
-        private void DrawNotification(float indicatorRealClearance)
-        {
-            float now = Time.time;
-            _notifications.RemoveAll(item => item.ExpireTime - now <= 0f);
-
-            if (_notifications.Count == 0)
-            {
-                return;
-            }
-
-            if (_notificationStyle == null)
-            {
-                _notificationStyle = new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.MiddleLeft,
-                    fontSize = 13,
-                    fontStyle = FontStyle.Bold,
-                    wordWrap = false,
-                };
-
-                _notificationTagStyle = new GUIStyle(GUI.skin.label)
-                {
-                    alignment = TextAnchor.MiddleCenter,
-                    fontSize = 10,
-                    fontStyle = FontStyle.Bold,
-                    wordWrap = false,
-                };
-            }
-
-            // Convert the indicator stack's real-pixel reach back into notifications' own (possibly
-            // differently scaled) local space, then use whichever margin is bigger — the usual fixed
-            // one, or the one that actually clears the indicators this frame.
-            float requiredLocalMargin = indicatorRealClearance / Mathf.Max(0.01f, _notificationScale.Value) + NotificationIndicatorGap;
-            float effectiveMarginBottom = Mathf.Max(NotificationBaseMarginBottom, requiredLocalMargin);
-
-            // Newest sits at the bottom of the stack, older ones ride above it.
-            for (int i = 0; i < _notifications.Count; i++)
-            {
-                int slotFromBottom = _notifications.Count - 1 - i;
-                DrawSingleNotification(_notifications[i], slotFromBottom, now, effectiveMarginBottom);
-            }
-        }
-
-        private void DrawSingleNotification(OverlayNotification n, int slotFromBottom, float now, float marginBottom)
-        {
-            float remaining = n.ExpireTime - now;
-            float elapsed = now - n.StartTime;
-            float slideT = Mathf.Clamp01(elapsed / NotificationSlideInSeconds);
-            slideT = slideT * slideT * (3f - 2f * slideT);
-
-            float fadeOut = remaining < NotificationFadeSeconds ? remaining / NotificationFadeSeconds : 1f;
-            float alpha = Mathf.Min(slideT, fadeOut);
-
-            NotificationStyle style = _notificationStyleMode.Value;
-            bool compact = style == NotificationStyle.ThemedCompact || style == NotificationStyle.MinimalCompact;
-            bool showChrome = style == NotificationStyle.Themed || style == NotificationStyle.ThemedCompact;
-            bool minimal = style == NotificationStyle.Minimal || style == NotificationStyle.MinimalCompact;
-
-            alpha *= _notificationOpacity.Value;
-
-            // Notifications can run a different faction theme than the window.
-            MilStyle.Palette pal = _notificationTheme.Value == NotificationTheme.FollowWindow
-                ? MilStyle.GetPalette(MilStyle.IsBear)
-                : MilStyle.GetPalette(_notificationTheme.Value == NotificationTheme.BEAR);
-
-            float boxWidth = compact ? 250f : 340f;
-            float lineHeight = compact ? 18f : 22f;
-            const float paddingH = 10f;
-            float paddingV = compact ? 5f : 7f;
-            float accentWidth = compact ? 3f : 4f;
-            const float marginRight = 20f;
-
-            float boxHeight = lineHeight + paddingV * 2f;
-            float targetX = Screen.width - boxWidth - marginRight;
-            float startX = Screen.width + 20f;
-            float x = Mathf.Lerp(startX, targetX, slideT);
-            float y = Screen.height - marginBottom - boxHeight - slotFromBottom * (boxHeight + 4f);
-            Rect box = new Rect(x, y, boxWidth, boxHeight);
-
-            Color prevGuiColor = GUI.color;
-
-            // Chassis. Colours always come from the theme; the style decides how much is drawn.
-            GUI.color = new Color(pal.Bg.r, pal.Bg.g, pal.Bg.b, (showChrome ? 0.93f : 0.8f) * alpha);
-            GUI.DrawTexture(box, Texture2D.whiteTexture);
-
-            if (showChrome)
-            {
-                GUI.color = new Color(pal.Panel.r, pal.Panel.g, pal.Panel.b, 0.85f * alpha);
-                GUI.DrawTexture(new Rect(box.x + accentWidth, box.y, box.width - accentWidth, box.height), Texture2D.whiteTexture);
-            }
-
-            Color accentColor = n.Color;
-            accentColor.a = alpha;
-            GUI.color = accentColor;
-            GUI.DrawTexture(new Rect(box.x, box.y, accentWidth, box.height), Texture2D.whiteTexture);
-
-            if (showChrome)
-            {
-                GUI.color = new Color(pal.Border.r, pal.Border.g, pal.Border.b, alpha);
-                GUI.DrawTexture(new Rect(box.x, box.y, box.width, 1f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.x, box.yMax - 1f, box.width, 1f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.xMax - 1f, box.y, 1f, box.height), Texture2D.whiteTexture);
-            }
-
-            if (showChrome && pal.IsBear)
-            {
-                // Stencil corner ticks, matching the recordings window chassis.
-                GUI.color = new Color(pal.SignalBright.r, pal.SignalBright.g, pal.SignalBright.b, alpha);
-                GUI.DrawTexture(new Rect(box.xMax - 9f, box.y, 9f, 2f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.xMax - 2f, box.y, 2f, 9f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.xMax - 9f, box.yMax - 2f, 9f, 2f), Texture2D.whiteTexture);
-                GUI.DrawTexture(new Rect(box.xMax - 2f, box.yMax - 9f, 2f, 9f), Texture2D.whiteTexture);
-            }
-
-            if (showChrome)
-            {
-                // Remaining-time bar: shows at a glance how long the message will stay up.
-                float lifeFraction = Mathf.Clamp01(remaining / NotificationDurationSeconds);
-                GUI.color = new Color(accentColor.r, accentColor.g, accentColor.b, 0.55f * alpha);
-                GUI.DrawTexture(new Rect(box.x + accentWidth, box.yMax - 2f, (box.width - accentWidth) * lifeFraction, 2f), Texture2D.whiteTexture);
-            }
-
-            GUI.color = prevGuiColor;
-
-            // Type tag: lets the message class be read at a glance without parsing the text.
-            // Minimal drops it entirely; the accent colour still carries the type.
-            float textX = box.x + accentWidth + paddingH;
-
-            if (!minimal)
-            {
-                float tagWidth = compact ? 36f : 44f;
-                Rect tagRect = new Rect(box.x + accentWidth + 6f, box.y + paddingV + 1f, tagWidth, lineHeight - 2f);
-
-                GUI.color = new Color(accentColor.r, accentColor.g, accentColor.b, 0.22f * alpha);
-                GUI.DrawTexture(tagRect, Texture2D.whiteTexture);
-                GUI.color = accentColor;
-                GUI.DrawTexture(new Rect(tagRect.x, tagRect.y, 1f, tagRect.height), Texture2D.whiteTexture);
-                GUI.color = prevGuiColor;
-
-                Color tagColor = accentColor;
-                tagColor.a = alpha;
-                _notificationTagStyle.normal.textColor = tagColor;
-                GUI.Label(tagRect, NotifyTag(n.Kind), _notificationTagStyle);
-
-                textX = tagRect.xMax + 8f;
-            }
-
-            GUI.color = prevGuiColor;
-            // Font size follows the style, so it has to be refreshed rather than set once at
-            // creation — the option can be changed at any time from the F12 menu.
-            _notificationStyle.fontSize = compact ? 11 : 13;
-            _notificationTagStyle.fontSize = compact ? 9 : 10;
-
-            Rect textRect = new Rect(textX, box.y + paddingV, box.xMax - textX - paddingH, lineHeight);
-
-            // White is the "no explicit colour" default; render those in the theme's text colour
-            // so plain messages stop looking like stock Unity labels.
-            // The accent already carries the colour coding, so the message itself stays neutral
-            // and legible rather than being tinted.
-            Color textColor = pal.TextPrimary;
-            textColor.a = alpha;
-
-            Rect shadowRect = new Rect(textRect.x + 1f, textRect.y + 1f, textRect.width, textRect.height);
-            Color shadowColor = pal.Bg;
-            shadowColor.a = alpha * 0.8f;
-            _notificationStyle.normal.textColor = shadowColor;
-            GUI.Label(shadowRect, n.Message, _notificationStyle);
-
-            _notificationStyle.normal.textColor = textColor;
-            GUI.Label(textRect, n.Message, _notificationStyle);
-        }
-
         private float GetWavDuration(WavData wav)
         {
             if (wav.Samples == null || wav.Channels == 0)
@@ -5287,6 +4782,10 @@ namespace RadioMod.Client
             if (!_showRaidReviewBrowser)
             {
                 _raidReviewResizing = false;
+
+                // The safety net for modality: whatever closed the window — the button, the hotkey,
+                // a raid starting, or an exception during draw — input comes back here.
+                WindowModality.EnsureClosed();
                 return;
             }
 
@@ -5330,11 +4829,22 @@ namespace RadioMod.Client
             if (!_cachedIsInRaid)
             {
                 _cachedInRadioDeadZone = false;
+                _cachedInAlincoAnomalyZone = false;
                 return;
             }
 
-            _cachedInRadioDeadZone = _jamRadioInDeadZones.Value
-                && RadioDeadZoneLocations.Contains(GetCurrentLocationId());
+            // Unconditional: the Labyrinth is always jammed. The old on/off setting is gone, so the
+            // Alinco anomaly cannot be switched away by accident.
+            bool wasJammed = _cachedInRadioDeadZone;
+            string location = GetCurrentLocationId();
+            _cachedInRadioDeadZone = RadioDeadZoneLocations.Contains(location);
+            _cachedInAlincoAnomalyZone = _cachedInRadioDeadZone;
+
+            // Leaving the dead zone re-arms the warning, so the next visit explains itself again.
+            if (wasJammed && !_cachedInRadioDeadZone)
+            {
+                _jamWarningShown = false;
+            }
         }
 
         private static bool IsInRaid()
@@ -5383,6 +4893,7 @@ namespace RadioMod.Client
             }
 
             UpdateRaidReviewResize();
+            UpdateAlincoAnomalies();
             UpdateRaidReviewAutoAdvance();
 
             CheckRaidEndForAutoCleanup();
@@ -5591,7 +5102,8 @@ namespace RadioMod.Client
                 return name;
             }
 
-            return "неизвестная рация";
+            return L("неизвестная рация", "unknown radio", "unbekanntes Funkgerät", "radio desconocida",
+                "radio inconnue", "nieznany radiotelefon", "radio sconosciuta", "neznámá vysílačka");
         }
 
         private List<string> CollectAllRadioTpls(InventoryEquipment eq)
@@ -5665,6 +5177,16 @@ namespace RadioMod.Client
 
         private RadioSoundSet GetActiveSoundSet()
         {
+            // Single choke point for cue selection, which is why the synthesised sets hook in here
+            // and nothing else in the sound path had to change.
+            if (_activeRadioTplId != null
+                && _soundStyle != null
+                && _soundStyle.Value != SoundStyle.Classic
+                && RadioProfiles.ContainsKey(_activeRadioTplId))
+            {
+                return GetSynthSoundSet(_activeRadioTplId);
+            }
+
             if (_activeRadioTplId != null && _radioSoundSets.TryGetValue(_activeRadioTplId, out RadioSoundSet set))
             {
                 return set;
@@ -5861,16 +5383,9 @@ namespace RadioMod.Client
 
                     // In a jammed location the interference warning replaces the usual "radio on"
                     // toast — two notifications back to back would just overwrite each other.
-                    if (_radioOn && _cachedInRadioDeadZone)
-                    {
-                        Notify(L("Сплошные помехи — связь недоступна", "Heavy interference — no usable signal",
-                            "Starke Störungen — keine Verbindung", "Interferencia total — sin señal utilizable",
-                            "Fortes interférences — aucun signal exploitable", "Silne zakłócenia — brak łączności",
-                            "Forti interferenze — nessun segnale utile", "Silné rušení — spojení nedostupné"),
-                            NotifyKind.Warning);
-                        PlayClip(_radioOn ? _onSound : _offSound, _radioOn ? "on" : "off");
-                        return;
-                    }
+                    // The jammed-channel warning used to replace this toast. It now fires on the
+                    // first transmit attempt instead — see NotifyJammedOnce — so switching the radio
+                    // on always reports plainly whether it is on or off.
 
                     Notify(_radioOn
                         ? L("Рация включена", "Radio on", "Funkgerät an", "Radio encendida", "Radio allumée", "Radiotelefon włączony", "Radio accesa", "Vysílačka zapnuta")
@@ -5923,6 +5438,7 @@ namespace RadioMod.Client
         {
             _txChannel = comms.RoomChannels.Open(TestFrequency, positional: false);
             PlayClip(GetActiveSoundSet().LocalStart, "local_start");
+            NotifyJammedOnce();
             LogVerbose("PRT: transmitting on " + TestFrequency + " (vanilla VOIP + radio)");
 
             if (_recordRadioComms.Value)
@@ -6169,7 +5685,11 @@ namespace RadioMod.Client
 
             RadioVoiceFilter filter = GetOrAddFilter(player.Name, src.gameObject);
 
-            RadioProfile profile = GetEffectiveProfile(player.Name);
+            // Order matters: the Labyrinth profile is an anomaly and must not be reshaped by the
+            // family rules, so the character transform runs first and is skipped when it applies.
+            RadioProfile profile = ApplyLabyrinthProfile(
+                player.Name,
+                ApplyInterferenceCharacter(ResolveRemoteRadioTpl(player.Name), GetEffectiveProfile(player.Name)));
             float distance = GetDistanceToPlayer(player.Name);
             RadioVoiceFilter.Mode mode;
             float ratio = 0f;
@@ -6179,10 +5699,10 @@ namespace RadioMod.Client
 
                 mode = RadioVoiceFilter.Mode.Silent;
             }
-            else if (_cachedInRadioDeadZone)
+            else if (IsLinkJammed(player.Name))
             {
-                // Jammed location: pure static regardless of distance or radio tier, so no radio
-                // can make anything out here.
+                // Jammed location: pure static regardless of distance or radio tier. The one way
+                // through is an Alinco at BOTH ends, which IsLinkJammed accounts for.
                 mode = RadioVoiceFilter.Mode.Static;
             }
             else if (distance < 0f || distance <= profile.ZeroNoiseRangeMeters)

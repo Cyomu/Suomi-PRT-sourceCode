@@ -54,6 +54,12 @@ namespace RadioMod.Client
             return tplId != null && RadioTiers.ContainsKey(tplId);
         }
 
+        /// <summary>Tier letter for the nameplate on the Instrument HUD, or null if unknown.</summary>
+        internal static string GetTier(string tplId)
+        {
+            return tplId != null && RadioTiers.TryGetValue(tplId, out string tier) ? tier : null;
+        }
+
         /// <summary>Battery rows only make sense when a battery mod is actually running.</summary>
         private static bool BatteryModPresent()
         {

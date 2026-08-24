@@ -18,13 +18,26 @@ using SPTarkov.Server.Core.Utils.Json;
 namespace RadioMod.Server
 {
 
-    // 4.1 dropped OnLoadOrder.PostDBModLoader; load order is now expressed purely as a TypePriority
-    // number, and we still need to run after the database is populated so our items can be added to
-    // it. int.MaxValue/2 keeps us late without fighting mods that legitimately want the very end.
-    [Injectable(TypePriority = int.MaxValue / 2)]
+    // 4.1 dropped OnLoadOrder.PostDBModLoader and expresses load order as a TypePriority number —
+    // but IOnLoad runs in TWO waves, split at 200000, and that split is what matters here:
+    //
+    //   DatabaseImporter                                     database is populated
+    //   ProgramExtensions.RunPreSptLoadCallbacks   < 200000   <-- we must be in this wave
+    //   SaveServer.LoadAsync                                  profiles are validated
+    //   SPTStartupHostedService                   >= 200000
+    //
+    // The previous value (int.MaxValue/2) sits above the split, so the radios were registered AFTER
+    // profile validation. Any profile carrying one was then reported as holding an item missing from
+    // the database and marked invalid — with SPT advising the player to enable
+    // removeModItemsFromProfile, which would have deleted the radio from their inventory.
+    //
+    // Verified by decompiling SPTarkov.Server.Core and SPT.Server: the threshold, both call sites and
+    // their order. Sitting just under the split keeps us as late as possible inside the early wave,
+    // so the database import is complete before we add anything to it.
+    [Injectable(TypePriority = 199_000)]
     public class RadioItemMod : IOnLoad
     {
-        internal const string DisplayVersion = "1.0.0E (experimental, SPT 4.1)";
+        internal const string DisplayVersion = "1.0.2 (experimental, SPT 4.1)";
 
         private const string CompassTplId = "5f4f9eb969cdc30ff33f09db";
 

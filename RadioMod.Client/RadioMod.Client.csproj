@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>RadioMod.Client</AssemblyName>
-    <Version>0.9.8</Version>
+    <Version>1.0.2</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -61,6 +61,12 @@
     </Reference>
     <Reference Include="UnityEngine.AudioModule">
       <HintPath>E:\Games\EFT410\EscapeFromTarkov_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- UnityEngine.EventSystems.EventSystem: needed to block the game's uGUI input while the
+         recordings window is open. Verified by decompilation that it lives here, not in UIModule. -->
+    <Reference Include="UnityEngine.UI">
+      <HintPath>E:\Games\EFT410\EscapeFromTarkov_Data\Managed\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">

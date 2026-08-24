@@ -16,7 +16,7 @@ namespace RadioMod.Server
         public string Name { get; init; } = "S&M-PRT (experimental)";
         public string Author { get; init; } = "Suomi & makshepard";
         public List<string>? Contributors { get; init; } = new List<string> { "Suomi", "makshepard" };
-        public Version Version { get; init; } = new Version("1.0.0-E");
+        public Version Version { get; init; } = new Version("1.0.2");
         public Range SptVersion { get; init; } = new Range("~4.1.0");
         public bool HasPrepatcher { get; init; }
         public List<string>? Incompatibilities { get; init; }
