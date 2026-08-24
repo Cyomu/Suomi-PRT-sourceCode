@@ -5,22 +5,10 @@ binaries from the stable 4.0.13 release, so they have their own hashes and their
 
 | File | SHA-256 | Result | VirusTotal Link |
 |---|---|---|---|
-| `PRT-fika.Client.dll` | `23E692534150C6FF97035F119BF0AEB00B084F29D5484AE20DD305AC677598C1` | Clean — 0 / 71 | [VirusTotal](https://www.virustotal.com/gui/file/23e692534150c6ff97035f119bf0aeb00b084f29d5484ae20dd305ac677598c1) |
-| `PRT-fika.Server.dll` | `4E71633ABB61FE7E1D09C6A7E79CAD7FBEA5FD7A88F40B843EF4DFA7FF032BD6` | 1 / 71 — false positive, see below | [VirusTotal](https://www.virustotal.com/gui/file/4e71633abb61fe7e1d09c6a7e79cad7fbea5fd7a88f40b843ef4dfa7ff032bd6) |
+| `PRT-fika.Client.dll` | `d503289bf30d870cd8393a5086ee0a28c41ce61fa1486e00b867914024f4ff2d` | Clean — 0 / 69 | [VirusTotal](https://www.virustotal.com/gui/file/d503289bf30d870cd8393a5086ee0a28c41ce61fa1486e00b867914024f4ff2d) |
+| `PRT-fika.Server.dll` | `ce3fe20925305c42dedaea33387c7d0545d85e1b836d42015e704d409cdcfad9` | 0 / 70 | [VirusTotal](https://www.virustotal.com/gui/file/ce3fe20925305c42dedaea33387c7d0545d85e1b836d42015e704d409cdcfad9) |
 
 ---
-
-## About the single detection on the server DLL
-
-One engine out of 71 flags the server DLL. This is a false positive, and the same detection appears
-on the stable 4.0.13 build, where it comes from MaxSecure as `Trojan.Malware.300983.susgen` — the
-`susgen` suffix literally means *suspicious generic*: a heuristic guess, not a match against known
-malware. It fires on traits like "small, unsigned .NET assembly", which describes practically every
-SPT server mod ever published.
-
-The mod contains no obfuscation, no packing, no loading of external code and makes no network
-requests of its own. On the server side it only registers items, traders and loot in SPT's own
-database at startup.
 
 ## Verify it yourself
 
